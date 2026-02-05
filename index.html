@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>CapyCatch by Bekk3r</title>
+<style>
+body {
+  margin: 0;
+  background: #1a0f2e;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+canvas {
+  background: #2b1453;
+  border: 3px solid #7a3cff;
+}
+</style>
+</head>
+<body>
+
+<canvas id="game" width="500" height="450"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let gameState = "start";
+let timerInterval = null;
+
+const capyImg = new Image();
+capyImg.src = "capy.png";
+
+const mandarinImg = new Image();
+mandarinImg.src = "mandarin.png";
+
+const goldImg = new Image();
+goldImg.src = "gold.png";
+
+const bombImg = new Image();
+bombImg.src = "bomb.png";
+
+let capy = {
+  x: 200,
+  y: 390,
+  width: 140,
+  speed: 10
+};
+
+let objects = [];
+let score = 0;
+let timeLeft = 60;
+
+const keys = { left:false, right:false };
+
+document.addEventListener("keydown", e=>{
+  if(e.key==="ArrowLeft") keys.left=true;
+  if(e.key==="ArrowRight") keys.right=true;
+});
+
+document.addEventListener("keyup", e=>{
+  if(e.key==="ArrowLeft") keys.left=false;
+  if(e.key==="ArrowRight") keys.right=false;
+});
+
+function startGame(){
+  score=0;
+  timeLeft=60;
+  objects=[];
+  gameState="playing";
+
+  clearInterval(timerInterval);
+  timerInterval=setInterval(()=>{
+    timeLeft--;
+    if(timeLeft<=0) endGame();
+  },1000);
+}
+
+function endGame(){
+  gameState="gameover";
+  clearInterval(timerInterval);
+}
+
+function spawnObject(){
+  if(gameState!=="playing") return;
+
+  const r=Math.random();
+  let type="normal";
+  if(r<0.15) type="gold";
+  else if(r<0.25) type="bomb";
+
+  objects.push({
+    x:Math.random()*(canvas.width-50),
+    y:-20,
+    speed:4+Math.random()*3,
+    type:type
+  });
+}
+
+setInterval(spawnObject,800);
+
+canvas.addEventListener("click",e=>{
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left;
+  const my=e.clientY-rect.top;
+
+  if(gameState==="start"){
+    if(mx>175&&mx<325&&my>260&&my<310)
+      startGame();
+  }
+
+  if(gameState==="gameover"){
+    if(mx>175&&mx<325&&my>300&&my<350)
+      startGame();
+  }
+});
+
+function update(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(gameState==="playing"){
+
+    if(keys.left&&capy.x>-30)
+      capy.x-=capy.speed;
+
+    if(keys.right&&capy.x<canvas.width-capy.width+20)
+      capy.x+=capy.speed;
+
+    ctx.drawImage(capyImg,capy.x,capy.y-120,140,180);
+
+    for(let i=0;i<objects.length;i++){
+      let o=objects[i];
+      o.y+=o.speed;
+
+      let img=mandarinImg;
+      if(o.type==="gold") img=goldImg;
+      if(o.type==="bomb") img=bombImg;
+
+      // добавляем угол вращения если его нет
+if (!o.angle) o.angle = 0;
+
+// увеличиваем угол каждый кадр
+o.angle += 0.08; // скорость вращения (можешь менять)
+
+// центрируем вращение
+ctx.save();
+ctx.translate(o.x, o.y);
+ctx.rotate(o.angle);
+
+// рисуем по центру
+ctx.drawImage(img, -25, -25, 50, 50);
+
+ctx.restore();
+
+
+      let basketX=capy.x+30;
+      let basketW=80;
+      let basketY=capy.y-110;
+      let basketH=40;
+
+      if(
+        o.y>basketY &&
+        o.y<basketY+basketH &&
+        o.x>basketX &&
+        o.x<basketX+basketW
+      ){
+        if(o.type==="normal") score++;
+        if(o.type==="gold") score+=5;
+        if(o.type==="bomb") score-=5;
+
+        objects.splice(i,1);
+        i--;
+      }
+
+      if(o.y>canvas.height){
+        objects.splice(i,1);
+        i--;
+      }
+    }
+
+    ctx.fillStyle="white";
+    ctx.font="20px Arial";
+    ctx.fillText("Счет: "+score,40,30);
+    ctx.fillText("Время: "+timeLeft,canvas.width-50,30);
+
+  }else if(gameState==="start"){
+    ctx.fillStyle="white";
+    ctx.font="40px Arial";
+	ctx.textAlign = "center";
+	ctx.fillText("Покорми Капибарку", canvas.width / 2, 200);
+
+
+    ctx.fillStyle="#7a3cff";
+let btnWidth = 160;
+let btnX = canvas.width / 2 - btnWidth / 2;
+
+ctx.fillRect(btnX, 260, btnWidth, 50);
+
+
+    ctx.fillStyle="white";
+    ctx.font="20px Arial";
+    ctx.fillText("СТАРТ", canvas.width / 2, 292);
+
+
+}else if(gameState==="gameover"){
+
+  ctx.textAlign = "center";
+
+  ctx.fillStyle="white";
+  ctx.font="40px Arial";
+  ctx.fillText("GAME OVER", canvas.width/2, 180);
+
+  ctx.font="26px Arial";
+  ctx.fillText("Финальный счет: " + score, canvas.width/2, 220);
+
+  let btnWidth = 160;
+  let btnX = canvas.width/2 - btnWidth/2;
+
+  ctx.fillStyle="#7a3cff";
+  ctx.fillRect(btnX, 270, btnWidth, 50);
+
+  ctx.fillStyle="white";
+  ctx.font="20px Arial";
+  ctx.fillText("РЕСТАРТ", canvas.width/2, 302);
+}
+
+
+  requestAnimationFrame(update);
+}
+
+update();
+</script>
+
+</body>
+</html>
