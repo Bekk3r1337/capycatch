@@ -5,6 +5,7 @@ const canvas = $("game");
 const ctx = canvas.getContext("2d");
 const progression = window.CapyProgression;
 const streamer = window.CapyStreamer;
+const adventure = window.CapyAdventure;
 
 const ui = {
   soundButton: $("sound-button"),
@@ -12,6 +13,9 @@ const ui = {
   pauseButton: $("pause-button"),
   leftButton: $("left-button"),
   rightButton: $("right-button"),
+  gadgetButton: $("gadget-button"),
+  gadgetButtonIcon: $("gadget-button-icon"),
+  gadgetCharges: $("gadget-charges"),
   liveStatus: $("live-status"),
   coinsDisplay: $("coins-display"),
   toastLayer: $("toast-layer"),
@@ -23,12 +27,32 @@ const ui = {
   achievementsButton: $("achievements-button"),
   leaderboardButton: $("leaderboard-button"),
   streamerButton: $("streamer-button"),
+  adventureButton: $("adventure-button"),
   modeDialog: $("mode-dialog"),
   shopDialog: $("shop-dialog"),
   achievementsDialog: $("achievements-dialog"),
   settingsDialog: $("settings-dialog"),
   leaderboardDialog: $("leaderboard-dialog"),
   streamerDialog: $("streamer-dialog"),
+  adventureDialog: $("adventure-dialog"),
+  storyDialog: $("story-dialog"),
+  adventureStars: $("adventure-stars"),
+  adventureCompleted: $("adventure-completed"),
+  adventureEvent: $("adventure-event"),
+  adventureZoneTabs: $("adventure-zone-tabs"),
+  adventureLevelGrid: $("adventure-level-grid"),
+  adventureLevelDetail: $("adventure-level-detail"),
+  skillPointsBadge: $("skill-points-badge"),
+  skillTree: $("skill-tree"),
+  resetSkillsButton: $("reset-skills-button"),
+  gadgetGrid: $("gadget-grid"),
+  adventureCollection: $("adventure-collection"),
+  storyIcon: $("story-icon"),
+  storySpeaker: $("story-speaker"),
+  storyText: $("story-text"),
+  storyProgress: $("story-progress"),
+  storyNextButton: $("story-next-button"),
+  storySkipButton: $("story-skip-button"),
   shopGrid: $("shop-grid"),
   shopCoins: $("shop-coins"),
   achievementsGrid: $("achievements-grid"),
@@ -86,6 +110,8 @@ const ITEM_INFO = {
   shield: { size: 46, label: "S", color: COLORS.blue },
   time: { size: 45, label: "+5", color: COLORS.green },
   rotten: { size: 44, label: "-", color: "#86a84a" }
+  ,decoy: { size: 48, label: "?", color: COLORS.pink }
+  ,strike: { size: 52, label: "⚡", color: COLORS.gold }
 };
 
 const assets = {};
@@ -137,6 +163,20 @@ let audioContext = null;
 let musicTimer = null;
 let musicStep = 0;
 let leaderboardView = "local";
+let selectedAdventureZone = "garden";
+let activeStory = null;
+let storyIndex = 0;
+let storyCompleteAction = null;
+let adventureLevel = null;
+let adventureBonuses = {};
+let bossState = null;
+let gadgetCharges = 0;
+let gadgetEffects = { freeze: 0 };
+let adventureGuards = { miss: 0, combo: 0 };
+let dashCooldown = 0;
+let windPhase = 0;
+let lastMoveDirection = 1;
+let lastPointerTap = 0;
 
 const powerups = { magnet: 0, shield: 0, fever: 0 };
 let metrics = createMetrics();
@@ -160,7 +200,12 @@ function createMetrics() {
     shieldSaves: 0,
     maxCombo: 1,
     feverActivations: 0,
-    duration: 0
+    duration: 0,
+    endReason: "",
+    remainingLives: 0,
+    bossDefeated: false,
+    adventureLevel: null,
+    adventureCompleted: false
   };
 }
 
@@ -190,6 +235,58 @@ function gameplayRandom() {
 
 function getSettings() {
   return progression.getState().settings;
+}
+
+function updateGadgetUi() {
+  const visible = progression.getMode().id === "adventure";
+  const gadget = adventure?.getSelectedGadget?.();
+  ui.gadgetButton.hidden = !visible;
+  ui.gadgetButton.parentElement?.classList.toggle("has-gadget", visible);
+  if (!gadget) return;
+  ui.gadgetButtonIcon.textContent = gadget.icon;
+  ui.gadgetCharges.textContent = String(gadgetCharges);
+  ui.gadgetButton.disabled = gameState !== "playing" || gadgetCharges <= 0;
+  ui.gadgetButton.title = `${gadget.name}: ${gadget.description}`;
+}
+
+function useAdventureGadget() {
+  if (gameState !== "playing" || !adventureLevel || gadgetCharges <= 0) return false;
+  const gadget = adventure.getSelectedGadget();
+  gadgetCharges -= 1;
+
+  if (gadget.id === "magnet") powerups.magnet = Math.max(powerups.magnet, 8);
+  if (gadget.id === "umbrella") powerups.shield = Math.min(Number(adventureBonuses.maxShield || 2), powerups.shield + 2);
+  if (gadget.id === "freeze") gadgetEffects.freeze = 6;
+  if (gadget.id === "whistle") {
+    streak = Math.max(streak, 10);
+    feverMeter = 100;
+    activateFever();
+  }
+  if (gadget.id === "net") {
+    for (let index = objects.length - 1; index >= 0; index -= 1) {
+      if (!["normal", "gold", "magnet", "shield", "time", "strike"].includes(objects[index].type)) continue;
+      handleCatch(objects[index]);
+      objects.splice(index, 1);
+    }
+  }
+
+  updateGadgetUi();
+  showToast(`${gadget.name} использован`, gadget.icon, 2200);
+  playTone(700, 0.12, "triangle", 0.6);
+  playTone(960, 0.2, "sine", 0.5, 0.08);
+  return true;
+}
+
+function dashPlayer(direction = lastMoveDirection) {
+  if (!adventureLevel || !adventureBonuses.dashEnabled || dashCooldown > 0 || gameState !== "playing") return false;
+  const dashDirection = direction || 1;
+  player.x = clamp(player.x + dashDirection * 128, -20, WIDTH - player.width + 20);
+  player.targetX = null;
+  player.tilt = dashDirection * 0.13;
+  dashCooldown = 1.6;
+  burst(player.x + player.width / 2, 407, COLORS.violetLight, 11, 110);
+  playTone(420, 0.1, "sine", 0.35);
+  return true;
 }
 
 function loadImage(name, source) {
@@ -259,8 +356,15 @@ function playCatchSound(type, combo) {
 function musicTick() {
   if (gameState !== "playing") return;
   const normalNotes = [261.6, 329.6, 392, 329.6, 293.7, 349.2, 440, 349.2];
+  const adventureNotes = {
+    breeze: [293.7, 370, 440, 493.9, 440, 370],
+    decoys: [220, 277.2, 329.6, 415.3, 329.6, 277.2],
+    storm: [196, 246.9, 293.7, 349.2, 293.7, 246.9],
+    conveyor: [261.6, 311.1, 370, 440, 370, 311.1],
+    mixed: [220, 329.6, 415.3, 523.3, 415.3, 329.6]
+  };
   const feverNotes = [523.3, 659.3, 784, 1046.5];
-  const notes = powerups.fever > 0 ? feverNotes : normalNotes;
+  const notes = powerups.fever > 0 ? feverNotes : adventureNotes[adventureLevel?.mechanic] || normalNotes;
   const note = notes[musicStep % notes.length];
   playTone(note, 0.24, "triangle", powerups.fever > 0 ? 0.32 : 0.19, 0, "music");
   if (musicStep % 2 === 0) playTone(note / 2, 0.32, "sine", 0.1, 0, "music");
@@ -307,13 +411,15 @@ function getTimeLeft() {
 
 function resetRound() {
   mode = progression.getMode();
+  adventureLevel = mode.adventure ? mode.level : null;
+  adventureBonuses = adventureLevel ? adventure.getBonuses() : {};
   score = 0;
   streak = 0;
-  feverMeter = 0;
+  feverMeter = Number(adventureBonuses.startingFever || 0);
   bestCombo = 1;
   elapsed = 0;
   extraTime = 0;
-  lives = mode.lives;
+  lives = mode.lives === null ? null : mode.lives + Number(adventureBonuses.extraLife || 0);
   spawnTimer = 0;
   nextSpawnDelay = 0.72 * mode.spawnMultiplier;
   objects = [];
@@ -325,15 +431,33 @@ function resetRound() {
   rewardSummary = null;
   statusSecond = -1;
   powerups.magnet = 0;
-  powerups.shield = 0;
+  powerups.shield = Number(adventureBonuses.startingShield || 0);
   powerups.fever = 0;
+  gadgetEffects.freeze = 0;
+  gadgetCharges = adventureLevel ? 1 : 0;
+  adventureGuards.miss = Number(adventureBonuses.missGuard || 0);
+  adventureGuards.combo = Number(adventureBonuses.comboGuard || 0);
+  dashCooldown = 0;
+  windPhase = 0;
+  bossState = adventureLevel?.boss ? {
+    hp: adventureLevel.zone.boss.hp,
+    maxHp: adventureLevel.zone.boss.hp,
+    attackTimer: 1.7,
+    attackIndex: 0,
+    x: WIDTH / 2,
+    direction: 1,
+    phase: 1
+  } : null;
   seededState = mode.seed || Math.floor(Math.random() * 0xffffffff);
   player.x = WIDTH / 2 - player.width / 2;
   player.targetX = null;
   player.bounce = 0;
   player.tilt = 0;
+  player.speed = 430 * Number(adventureBonuses.movementMultiplier || 1);
   metrics = createMetrics();
   metrics.mode = mode.id;
+  metrics.adventureLevel = adventureLevel?.number || null;
+  updateGadgetUi();
 }
 
 function startGame() {
@@ -341,6 +465,7 @@ function startGame() {
   initAudio();
   resetRound();
   gameState = "playing";
+  updateGadgetUi();
   ui.pauseButton.disabled = false;
   ui.pauseButton.textContent = "Пауза";
   ui.liveStatus.textContent = `Игра началась. Режим: ${mode.name}`;
@@ -349,7 +474,7 @@ function startGame() {
   startMusic();
 }
 
-async function finishRound() {
+async function finishRound(endReason = "complete") {
   if (gameState !== "playing") return;
   gameState = "gameover";
   stopMusic();
@@ -361,8 +486,18 @@ async function finishRound() {
   metrics.score = score;
   metrics.maxCombo = bestCombo;
   metrics.duration = Math.round(elapsed);
+  metrics.endReason = endReason;
+  metrics.remainingLives = lives === null ? 0 : lives;
+  metrics.bossDefeated = Boolean(bossState && bossState.hp <= 0);
+  let adventureResult = null;
+  if (adventureLevel) {
+    adventureResult = adventure.completeLevel(adventureLevel.id, metrics);
+    metrics.adventureCompleted = adventureResult.completed;
+    if (adventureResult.completed) selectedAdventureZone = adventure.getLevel().zoneId;
+  }
   lastResult = { ...metrics };
   rewardSummary = progression.recordRound(lastResult);
+  rewardSummary.adventure = adventureResult;
   isNewRecord = rewardSummary.newRecord;
   refreshAllUi();
 
@@ -371,11 +506,21 @@ async function finishRound() {
     showToast(`<strong>${achievement.title}</strong> +${achievement.reward} монет`, achievement.icon, 4200);
   }
 
-  progression.submitRemoteScore(lastResult).catch(() => {});
+  for (const cosmetic of adventureResult?.unlockedCosmetics || []) {
+    showToast(`<strong>${cosmetic.name}</strong> открыт`, cosmetic.icon, 4200);
+  }
+  if (adventureResult) {
+    const message = adventureResult.completed ? `Уровень пройден: ${"⭐".repeat(adventureResult.stars)}` : "Цель уровня не выполнена";
+    showToast(message, adventureResult.completed ? "🗺️" : "↺", 3600);
+  }
+
+  if (!adventureLevel) progression.submitRemoteScore(lastResult).catch(() => {});
   ui.liveStatus.textContent = `Игра окончена. Результат: ${score}. Рекорд: ${rewardSummary.highScore}`;
   playTone(523, 0.12, "sine", 0.58);
   playTone(659, 0.12, "sine", 0.58, 0.1);
   playTone(784, 0.24, "sine", 0.58, 0.2);
+  const ending = adventureResult?.completed ? adventure.getEndingStory() : null;
+  if (ending) window.setTimeout(() => showStory(ending), 650);
 }
 
 function togglePause(forcePause = false) {
@@ -405,7 +550,7 @@ function getDifficulty() {
     spawnDelay: lerp(0.86, 0.44, progress) * mode.spawnMultiplier,
     fallSpeed: lerp(155, 275, progress) * mode.speedMultiplier,
     bombChance: clamp(lerp(0.075, 0.165, progress) + mode.bombBonus, 0.025, 0.28),
-    goldChance: clamp(0.12 + Number(mode.goldBonus || 0), 0.08, 0.32),
+    goldChance: clamp(0.12 + Number(mode.goldBonus || 0) + Number(adventureBonuses.goldBonus || 0), 0.08, 0.36),
     bonusChance: mode.id === "chaos" ? 0.115 : 0.075,
     rottenChance: progress > 0.2 ? (mode.id === "chaos" ? 0.07 : 0.045) : 0
   };
@@ -423,6 +568,10 @@ function selectRandomType() {
 
   let cursor = difficulty.bombChance;
   if (roll < cursor) return "bomb";
+  if (adventureLevel && ["decoys", "mixed"].includes(adventureLevel.mechanic)) {
+    cursor += adventureLevel.mechanic === "mixed" ? 0.035 : 0.06;
+    if (roll < cursor) return "decoy";
+  }
   cursor += difficulty.goldChance;
   if (roll < cursor) return "gold";
   cursor += difficulty.rottenChance;
@@ -456,7 +605,8 @@ function spawnObject(typeOverride = null, viewer = null, xOverride = null) {
 }
 
 function getBasket() {
-  return { x: player.x + 28, y: 270, width: 84, height: 47 };
+  const width = 84 + Number(adventureBonuses.basketBonus || 0);
+  return { x: player.x + player.width / 2 - width / 2, y: 270, width, height: 47 };
 }
 
 function overlapsBasket(object, basket) {
@@ -476,13 +626,13 @@ function loseLife(reasonX, reasonY) {
   if (mode.lives === null) return false;
   lives = Math.max(0, lives - 1);
   addFloatingText(reasonX, reasonY, "-1 ❤️", COLORS.red, 24);
-  if (lives <= 0) finishRound();
+  if (lives <= 0) finishRound("lives");
   return true;
 }
 
 function activateFever() {
   if (powerups.fever > 0 || currentCombo() < 3 || feverMeter < 100) return;
-  powerups.fever = 7;
+  powerups.fever = Number(adventureBonuses.feverDuration || 7);
   feverMeter = 100;
   metrics.feverActivations += 1;
   showToast("Золотой дождь начался! Комбо x4", "🌟", 3000);
@@ -493,12 +643,22 @@ function activateFever() {
   restartMusicTempo();
 }
 
+function breakCombo(allowGuard = true) {
+  if (adventureLevel && allowGuard && adventureGuards.combo > 0) {
+    adventureGuards.combo -= 1;
+    addFloatingText(WIDTH / 2, 155, "РИТМ СОХРАНЁН", COLORS.green, 18);
+    return false;
+  }
+  streak = 0;
+  return true;
+}
+
 function handleCatch(object) {
   const comboBeforeCatch = currentCombo();
 
   if (object.type === "bomb") {
     metrics.bombsCaught += 1;
-    streak = 0;
+    breakCombo();
     if (powerups.shield > 0) {
       powerups.shield -= 1;
       metrics.shieldSaves += 1;
@@ -509,7 +669,7 @@ function handleCatch(object) {
       return;
     }
 
-    addScore(-5, object, COLORS.red);
+    addScore(-Number(adventureBonuses.bombPenalty || 5), object, COLORS.red);
     player.bounce = -1;
     if (!getSettings().reducedMotion) {
       shakeTime = 0.28;
@@ -524,9 +684,9 @@ function handleCatch(object) {
 
   if (object.type === "rotten") {
     metrics.caught += 1;
-    streak = 0;
+    breakCombo();
     feverMeter = Math.max(0, feverMeter - 25);
-    addScore(-3, object, "#a3b85b");
+    addScore(-Number(adventureBonuses.rottenPenalty || 3), object, "#a3b85b");
     player.bounce = -0.6;
     burst(object.x, object.y, "#86a84a", 10, 95);
     playCatchSound("rotten", 1);
@@ -544,10 +704,38 @@ function handleCatch(object) {
 
   if (object.type === "shield") {
     metrics.powerupsCaught += 1;
-    powerups.shield = Math.min(2, powerups.shield + 1);
+    powerups.shield = Math.min(Number(adventureBonuses.maxShield || 2), powerups.shield + 1);
     addFloatingText(object.x, object.y, "ЩИТ", COLORS.blue, 23);
     burst(object.x, object.y, COLORS.blue, 13, 125);
     playCatchSound("shield", 1);
+    return;
+  }
+
+  if (object.type === "decoy") {
+    metrics.caught += 1;
+    breakCombo();
+    feverMeter = Math.max(0, feverMeter - 18);
+    addScore(-4, object, COLORS.pink);
+    burst(object.x, object.y, COLORS.pink, 12, 120);
+    playCatchSound("rotten", 1);
+    addFloatingText(object.x, object.y - 25, "ПОДДЕЛКА", COLORS.pink, 16);
+    return;
+  }
+
+  if (object.type === "strike") {
+    if (!bossState) return;
+    bossState.hp = Math.max(0, bossState.hp - 1);
+    bossState.phase = bossState.hp <= Math.ceil(bossState.maxHp / 3) ? 3 : bossState.hp <= Math.ceil(bossState.maxHp * 2 / 3) ? 2 : 1;
+    addScore(8 * currentCombo(), object, COLORS.gold);
+    addFloatingText(object.x, object.y - 22, "УДАР!", COLORS.gold, 23);
+    burst(object.x, object.y, COLORS.gold, 24, 190);
+    playTone(880, 0.18, "square", 0.65);
+    playTone(1174, 0.25, "triangle", 0.55, 0.08);
+    if (bossState.hp <= 0) {
+      metrics.bossDefeated = true;
+      showToast(`${adventureLevel.zone.boss.name} побеждён!`, adventureLevel.zone.boss.icon, 4200);
+      window.setTimeout(() => finishRound("boss"), 420);
+    }
     return;
   }
 
@@ -569,7 +757,7 @@ function handleCatch(object) {
   const basePoints = object.type === "gold" ? 5 : 1;
   const gained = basePoints * combo;
   addScore(gained, object, object.type === "gold" ? COLORS.gold : COLORS.orange);
-  feverMeter = clamp(feverMeter + (object.type === "gold" ? 18 : 7), 0, 100);
+  feverMeter = clamp(feverMeter + (object.type === "gold" ? 18 : 7) * Number(adventureBonuses.feverGainMultiplier || 1), 0, 100);
   player.bounce = 1;
   burst(object.x, object.y, object.type === "gold" ? COLORS.gold : COLORS.orange, object.type === "gold" ? 15 : 9, object.type === "gold" ? 150 : 100);
   playCatchSound(object.type, combo);
@@ -584,11 +772,16 @@ function handleCatch(object) {
 }
 
 function handleMiss(object) {
-  if (object.type === "bomb") return;
-  if (["normal", "gold", "rotten"].includes(object.type)) {
+  if (["bomb", "decoy"].includes(object.type)) return;
+  if (["normal", "gold", "rotten", "strike"].includes(object.type)) {
     metrics.missed += 1;
-    streak = 0;
-    if (mode.lives !== null && object.type !== "rotten") loseLife(object.x, HEIGHT - 20);
+    if (adventureLevel && adventureGuards.miss > 0 && object.type !== "rotten") {
+      adventureGuards.miss -= 1;
+      addFloatingText(object.x, HEIGHT - 28, "СПАСЕНО!", COLORS.blue, 18);
+      return;
+    }
+    breakCombo();
+    if (mode.lives !== null && !["rotten", "strike"].includes(object.type)) loseLife(object.x, HEIGHT - 20);
   }
 }
 
@@ -623,6 +816,7 @@ function updatePlayer(deltaTime) {
   const previousX = player.x;
 
   if (direction !== 0) {
+    lastMoveDirection = direction;
     player.targetX = null;
     player.x += direction * player.speed * deltaTime;
     player.tilt = lerp(player.tilt, direction * 0.07, Math.min(1, deltaTime * 12));
@@ -636,9 +830,16 @@ function updatePlayer(deltaTime) {
     player.tilt = lerp(player.tilt, 0, Math.min(1, deltaTime * 10));
   }
 
+  if (adventureLevel?.mechanic === "conveyor" || adventureLevel?.mechanic === "mixed") {
+    const conveyorDirection = Math.floor(elapsed / 4) % 2 === 0 ? -1 : 1;
+    const strength = adventureLevel.mechanic === "mixed" ? 24 : 38;
+    player.x += conveyorDirection * strength * deltaTime;
+  }
+
   player.x = clamp(player.x, -20, WIDTH - player.width + 20);
   player.bounce = lerp(player.bounce, 0, Math.min(1, deltaTime * 9));
   player.runPhase += Math.abs(player.x - previousX) * 0.065;
+  dashCooldown = Math.max(0, dashCooldown - deltaTime);
 
   if (Math.abs(player.x - previousX) > 0.5 && Math.random() < 0.35 && !getSettings().reducedMotion) {
     const skin = progression.getSkin();
@@ -647,7 +848,8 @@ function updatePlayer(deltaTime) {
       y: 420,
       life: 0.38,
       maxLife: 0.38,
-      color: skin.id === "golden" ? COLORS.gold : skin.id === "berry" ? COLORS.pink : skin.id === "cosmic" ? COLORS.blue : COLORS.violet
+      color: skin.id === "golden" ? COLORS.gold : skin.id === "berry" ? COLORS.pink : skin.id === "cosmic" ? COLORS.blue : COLORS.violet,
+      cosmetic: adventureLevel ? getAdventureCosmetic("trail") : ""
     });
   }
 }
@@ -661,7 +863,14 @@ function updateObjects(deltaTime) {
     if (powerups.magnet > 0 && ["normal", "gold"].includes(object.type) && object.y > 80) {
       object.x += clamp(basketCenter - object.x, -130, 130) * deltaTime * 2.4;
     }
-    object.y += object.speed * deltaTime;
+    const harmfulNearBasket = adventureBonuses.timeInstinct && ["bomb", "rotten", "decoy"].includes(object.type) && object.y > 205;
+    const freezeMultiplier = gadgetEffects.freeze > 0 ? 0.36 : 1;
+    const instinctMultiplier = harmfulNearBasket ? 0.64 : 1;
+    object.y += object.speed * deltaTime * freezeMultiplier * instinctMultiplier;
+    if (adventureLevel?.mechanic === "breeze") object.x += Math.sin(windPhase * 1.6 + object.angle) * 20 * deltaTime;
+    if (adventureLevel?.mechanic === "storm") object.x += Math.sin(windPhase * 1.25) * 70 * deltaTime;
+    if (adventureLevel?.mechanic === "mixed") object.x += Math.sin(windPhase * 1.4 + object.angle) * 38 * deltaTime;
+    object.x = clamp(object.x, object.size / 2, WIDTH - object.size / 2);
     object.angle += object.rotationSpeed * deltaTime;
 
     if (overlapsBasket(object, basket)) {
@@ -709,10 +918,11 @@ function updateEffects(deltaTime) {
 
 function updatePowerups(deltaTime) {
   powerups.magnet = Math.max(0, powerups.magnet - deltaTime);
+  gadgetEffects.freeze = Math.max(0, gadgetEffects.freeze - deltaTime);
   if (powerups.fever > 0) {
     const old = powerups.fever;
     powerups.fever = Math.max(0, powerups.fever - deltaTime);
-    feverMeter = clamp(powerups.fever / 7 * 100, 0, 100);
+    feverMeter = clamp(powerups.fever / Number(adventureBonuses.feverDuration || 7) * 100, 0, 100);
     if (old > 0 && powerups.fever === 0) {
       feverMeter = 0;
       streak = 0;
@@ -722,11 +932,51 @@ function updatePowerups(deltaTime) {
   }
 }
 
+function updateBoss(deltaTime) {
+  if (!bossState || bossState.hp <= 0) return;
+  bossState.x += bossState.direction * (48 + bossState.phase * 12) * deltaTime;
+  if (bossState.x < 75 || bossState.x > WIDTH - 75) {
+    bossState.direction *= -1;
+    bossState.x = clamp(bossState.x, 75, WIDTH - 75);
+  }
+
+  bossState.attackTimer -= deltaTime;
+  if (bossState.attackTimer > 0) return;
+  bossState.attackIndex += 1;
+  const phase = bossState.phase;
+  const mechanic = adventureLevel.mechanic;
+  const strikeEvery = mechanic === "mixed" ? 4 : 3;
+
+  if (bossState.attackIndex % strikeEvery === 0) {
+    spawnObject("strike", null, bossState.x);
+    showToast("Поймай заряд и атакуй босса!", "⚡", 1500);
+  } else if (mechanic === "breeze") {
+    spawnObject(bossState.attackIndex % 2 ? "bomb" : "rotten", null, bossState.x);
+  } else if (mechanic === "decoys") {
+    spawnObject("decoy", null, bossState.x - 45);
+    if (phase >= 2) spawnObject("bomb", null, bossState.x + 45);
+  } else if (mechanic === "storm") {
+    spawnObject("bomb", null, bossState.x - 62);
+    spawnObject(phase >= 2 ? "bomb" : "normal", null, bossState.x + 62);
+  } else if (mechanic === "conveyor") {
+    const lanes = phase >= 3 ? [80, 250, 420] : [125, 375];
+    lanes.forEach((x, index) => spawnObject(index === bossState.attackIndex % lanes.length ? "gold" : "bomb", null, x));
+  } else {
+    [90, 250, 410].forEach((x, index) => {
+      const safeLane = bossState.attackIndex % 3;
+      spawnObject(index === safeLane ? (phase >= 2 ? "strike" : "gold") : "bomb", null, x);
+    });
+  }
+
+  bossState.attackTimer = Math.max(0.82, 2.45 - phase * 0.27 - adventureLevel.zoneIndex * 0.08);
+}
+
 function updateGame(deltaTime) {
   elapsed += deltaTime;
+  windPhase += deltaTime;
   metrics.duration = Math.round(elapsed);
   if (mode.duration !== null && getTimeLeft() <= 0) {
-    finishRound();
+    finishRound("time");
     return;
   }
 
@@ -737,6 +987,7 @@ function updateGame(deltaTime) {
   }
 
   updatePlayer(deltaTime);
+  updateBoss(deltaTime);
   updateObjects(deltaTime);
   updatePowerups(deltaTime);
   updateEffects(deltaTime);
@@ -777,8 +1028,9 @@ function drawBackground(time) {
   if (streamer.isObsMode()) return;
 
   const gradient = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-  gradient.addColorStop(0, powerups.fever > 0 ? "#50320d" : "#32155c");
-  gradient.addColorStop(0.56, powerups.fever > 0 ? "#3c1d28" : "#241044");
+  const zoneColors = adventureLevel?.zone.colors;
+  gradient.addColorStop(0, powerups.fever > 0 ? "#50320d" : zoneColors?.[0] || "#32155c");
+  gradient.addColorStop(0.56, powerups.fever > 0 ? "#3c1d28" : zoneColors?.[1] || "#241044");
   gradient.addColorStop(1, "#160a2c");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -798,6 +1050,47 @@ function drawBackground(time) {
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+
+  if (adventureLevel?.mechanic === "storm") {
+    ctx.strokeStyle = "rgba(147, 197, 253, .25)";
+    ctx.lineWidth = 2;
+    for (let index = 0; index < 18; index += 1) {
+      const x = (index * 37 + time * 0.18) % (WIDTH + 80) - 40;
+      const y = (index * 53 + time * 0.32) % HEIGHT;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - 16, y + 30);
+      ctx.stroke();
+    }
+  } else if (adventureLevel?.mechanic === "conveyor") {
+    ctx.fillStyle = "rgba(196, 181, 253, .08)";
+    for (let x = -40; x < WIDTH + 40; x += 70) ctx.fillRect(x + (time * 0.03) % 70, 398, 42, 8);
+  } else if (adventureLevel?.mechanic === "decoys") {
+    ctx.font = "24px Arial";
+    ctx.globalAlpha = 0.18;
+    for (let index = 0; index < 5; index += 1) ctx.fillText("🏮", 45 + index * 105, 175 + (index % 2) * 55);
+    ctx.globalAlpha = 1;
+  } else if (adventureLevel?.mechanic === "breeze") {
+    ctx.font = "18px Arial";
+    ctx.globalAlpha = 0.2;
+    for (let index = 0; index < 7; index += 1) ctx.fillText("🍃", (index * 91 + time * 0.015) % WIDTH, 130 + (index % 3) * 72);
+    ctx.globalAlpha = 1;
+  }
+
+  if (mode.event?.id === "winter_festival") {
+    ctx.fillStyle = "rgba(255,255,255,.34)";
+    for (let index = 0; index < 14; index += 1) {
+      const x = (index * 61 + time * 0.018) % WIDTH;
+      const y = (index * 47 + time * 0.035) % HEIGHT;
+      ctx.beginPath();
+      ctx.arc(x, y, 2 + index % 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (mode.event?.id === "purple_week") {
+    const pulse = 0.04 + Math.sin(time * 0.002) * 0.02;
+    ctx.fillStyle = `rgba(139, 92, 246, ${pulse})`;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  }
 
   ctx.fillStyle = "rgba(10, 4, 23, 0.22)";
   ctx.beginPath();
@@ -879,6 +1172,80 @@ function drawSkinAccessory(skin) {
   ctx.restore();
 }
 
+function getAdventureCosmetic(type) {
+  if (!adventure) return "";
+  return adventure.getState().selectedCosmetics[type] || "";
+}
+
+function drawAdventureOutfit() {
+  if (!adventureLevel && progression.getMode().id !== "adventure") return;
+  const outfit = getAdventureCosmetic("outfit");
+  if (!outfit || outfit === "classic") return;
+  const centerX = player.x + player.width / 2;
+  ctx.save();
+  ctx.translate(centerX, 0);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const icons = {
+    gardener: ["🌱", 239, 28],
+    lantern: ["🏮", 246, 29],
+    sailor: ["⚓", 248, 27],
+    mechanic: ["🔧", 249, 27],
+    citrus_king: ["👑", 235, 31],
+    star_scarf: ["🧣", 309, 31],
+    violet_witch: ["🧙", 238, 34],
+    pumpkin: ["🎃", 245, 31],
+    snowcap: ["❄️", 242, 31]
+  };
+  const item = icons[outfit];
+  if (item) {
+    ctx.font = `${item[2]}px Arial`;
+    ctx.shadowColor = outfit === "citrus_king" ? COLORS.gold : COLORS.violet;
+    ctx.shadowBlur = 10;
+    ctx.fillText(item[0], 0, item[1]);
+  }
+  ctx.restore();
+}
+
+function drawBoss() {
+  if (!bossState || bossState.hp <= 0) return;
+  const boss = adventureLevel.zone.boss;
+  const bob = Math.sin(performance.now() * 0.004) * 5;
+  ctx.save();
+  ctx.translate(bossState.x, 166 + bob);
+  ctx.globalAlpha = 0.2;
+  ctx.fillStyle = bossState.phase === 3 ? COLORS.red : COLORS.violet;
+  ctx.beginPath();
+  ctx.arc(0, 0, 57 + bossState.phase * 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.font = `${46 + bossState.phase * 2}px Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(boss.icon, 0, 0);
+  ctx.restore();
+}
+
+function drawAdventureFrame() {
+  if (!adventureLevel) return;
+  const frame = getAdventureCosmetic("frame");
+  if (!frame) return;
+  const colors = {
+    garden_frame: COLORS.green,
+    market_frame: COLORS.pink,
+    storm_frame: COLORS.blue,
+    factory_frame: COLORS.violetLight,
+    royal_frame: COLORS.gold
+  };
+  ctx.save();
+  ctx.strokeStyle = colors[frame] || COLORS.violetLight;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = frame === "royal_frame" ? 5 : 3;
+  roundedPath(5, 5, WIDTH - 10, HEIGHT - 10, 18);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawPlayer() {
   const skin = progression.getSkin();
   drawSkinAura(skin);
@@ -896,6 +1263,7 @@ function drawPlayer() {
   drawImageOrFallback(assets.capy, -PLAYER_WIDTH / 2, -150, PLAYER_WIDTH, PLAYER_HEIGHT, "#9b6b43", "CAPY");
   ctx.restore();
   drawSkinAccessory(skin);
+  drawAdventureOutfit();
 
   if (powerups.shield > 0) {
     ctx.save();
@@ -971,13 +1339,26 @@ function drawSpecialItem(object) {
     ctx.moveTo(0, 0);
     ctx.lineTo(size * 0.17, size * 0.09);
     ctx.stroke();
+  } else if (object.type === "strike") {
+    ctx.fillStyle = "rgba(255, 209, 102, .92)";
+    ctx.shadowColor = COLORS.gold;
+    ctx.shadowBlur = 18;
+    ctx.beginPath();
+    ctx.moveTo(5, -size * 0.44);
+    ctx.lineTo(-12, -3);
+    ctx.lineTo(1, -3);
+    ctx.lineTo(-6, size * 0.43);
+    ctx.lineTo(17, 2);
+    ctx.lineTo(5, 2);
+    ctx.closePath();
+    ctx.fill();
   }
   ctx.restore();
 }
 
 function drawObjects() {
   for (const object of objects) {
-    if (["magnet", "shield", "time"].includes(object.type)) {
+    if (["magnet", "shield", "time", "strike"].includes(object.type)) {
       ctx.save();
       ctx.shadowColor = ITEM_INFO[object.type].color;
       ctx.shadowBlur = 17;
@@ -1022,6 +1403,16 @@ function drawObjects() {
       ctx.moveTo(8, -8);
       ctx.lineTo(-8, 8);
       ctx.stroke();
+    } else if (object.type === "decoy") {
+      ctx.fillStyle = "rgba(236, 72, 153, .8)";
+      ctx.beginPath();
+      ctx.arc(0, 0, object.size * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = COLORS.white;
+      ctx.font = "900 24px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("?", 0, 1);
     }
     ctx.restore();
 
@@ -1043,9 +1434,23 @@ function drawEffects() {
     const alpha = clamp(trail.life / trail.maxLife, 0, 1);
     ctx.globalAlpha = alpha * 0.55;
     ctx.fillStyle = trail.color;
-    ctx.beginPath();
-    ctx.arc(trail.x, trail.y, 8 * alpha, 0, Math.PI * 2);
-    ctx.fill();
+    if (trail.cosmetic === "leaves") {
+      ctx.font = `${Math.max(8, 17 * alpha)}px Arial`;
+      ctx.fillText("🍂", trail.x, trail.y);
+    } else if (trail.cosmetic === "bubbles") {
+      ctx.strokeStyle = COLORS.blue;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(trail.x, trail.y, 9 * alpha, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (trail.cosmetic === "lights" || trail.cosmetic === "sparks" || trail.cosmetic === "crowns") {
+      ctx.font = `${Math.max(8, 15 * alpha)}px Arial`;
+      ctx.fillText(trail.cosmetic === "crowns" ? "♛" : "✦", trail.x, trail.y);
+    } else {
+      ctx.beginPath();
+      ctx.arc(trail.x, trail.y, 8 * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   for (const particle of particles) {
@@ -1077,6 +1482,7 @@ function drawPowerupStatus() {
   const active = [];
   if (powerups.magnet > 0) active.push({ icon: "🧲", text: `${Math.ceil(powerups.magnet)}с`, color: COLORS.red });
   if (powerups.shield > 0) active.push({ icon: "🛡", text: `x${powerups.shield}`, color: COLORS.blue });
+  if (gadgetEffects.freeze > 0) active.push({ icon: "❄️", text: `${Math.ceil(gadgetEffects.freeze)}с`, color: COLORS.blue });
 
   active.forEach((item, index) => {
     const y = 88 + index * 34;
@@ -1130,7 +1536,7 @@ function drawHud() {
   roundRect(14, 70, 472, 5, 3, "rgba(255,255,255,0.09)");
   roundRect(14, 70, 472 * progress, 5, 3, timeDanger ? COLORS.red : COLORS.violet);
 
-  if (combo > 1) {
+  if (combo > 1 && !bossState) {
     const fever = powerups.fever > 0;
     roundRect(198, 84, 104, 30, 15, fever ? "rgba(255, 209, 102, .94)" : combo === 3 ? "rgba(255, 159, 67, .9)" : "rgba(110, 231, 183, .86)");
     ctx.fillStyle = "#241044";
@@ -1157,6 +1563,23 @@ function drawHud() {
     ctx.fillStyle = COLORS.muted;
     ctx.font = "800 9px Arial";
     ctx.fillText("FEVER", 250, 141);
+  }
+  if (bossState) {
+    roundRect(145, 84, 210, 31, 15, "rgba(18,7,35,.8)", "rgba(255,209,102,.2)");
+    roundRect(157, 98, 186, 7, 4, "rgba(255,255,255,.1)");
+    roundRect(157, 98, 186 * (bossState.hp / bossState.maxHp), 7, 4, bossState.phase === 3 ? COLORS.red : COLORS.gold);
+    ctx.fillStyle = COLORS.white;
+    ctx.font = "800 9px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(`${adventureLevel.zone.boss.name}  ${bossState.hp}/${bossState.maxHp}`, 250, 94);
+  }
+  if (adventureLevel && !bossState) {
+    roundRect(115, 148, 270, 25, 12, "rgba(18,7,35,.7)", "rgba(255,255,255,.06)");
+    ctx.fillStyle = COLORS.violetLight;
+    ctx.font = "800 9px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(adventureLevel.objectiveText.toUpperCase(), 250, 160);
   }
   drawPowerupStatus();
 }
@@ -1238,9 +1661,10 @@ function drawGameOver() {
 
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = isNewRecord ? COLORS.gold : COLORS.white;
+  const adventureResult = rewardSummary?.adventure;
+  ctx.fillStyle = adventureResult?.completed || isNewRecord ? COLORS.gold : COLORS.white;
   ctx.font = "900 25px Arial";
-  ctx.fillText(isNewRecord ? "НОВЫЙ РЕКОРД!" : "РАУНД ОКОНЧЕН", WIDTH / 2, 65);
+  ctx.fillText(adventureResult ? (adventureResult.completed ? "УРОВЕНЬ ПРОЙДЕН!" : "ПОПРОБУЙ ЕЩЁ РАЗ") : isNewRecord ? "НОВЫЙ РЕКОРД!" : "РАУНД ОКОНЧЕН", WIDTH / 2, 65);
   ctx.fillStyle = COLORS.muted;
   ctx.font = "700 10px Arial";
   ctx.fillText(mode.name.toUpperCase(), WIDTH / 2, 86);
@@ -1280,11 +1704,18 @@ function drawGameOver() {
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.gold;
     ctx.font = "900 12px Arial";
-    ctx.fillText(`+${rewardSummary.coinsEarned} 🍊   •   рекорд ${rewardSummary.highScore}`, WIDTH / 2, 333);
+    const rewardText = adventureResult
+      ? `+${rewardSummary.coinsEarned} 🍊   •   ${adventureResult.completed ? "⭐".repeat(adventureResult.stars) : "цель не выполнена"}`
+      : `+${rewardSummary.coinsEarned} 🍊   •   рекорд ${rewardSummary.highScore}`;
+    ctx.fillText(rewardText, WIDTH / 2, 333);
   }
 
   drawButton(62, 354, 177, 51, "ЕЩЁ РАЗ", isNewRecord ? COLORS.pink : COLORS.violet, 15);
-  drawButton(261, 354, 177, 51, "ПОДЕЛИТЬСЯ", "#3b2464", 14);
+  drawButton(261, 354, 177, 51, adventureResult ? "К КАРТЕ" : "ПОДЕЛИТЬСЯ", "#3b2464", 14);
+  if (adventureResult?.completed) {
+    ctx.font = "26px Arial";
+    ctx.fillText(adventure.cosmetics.find(item => item.id === getAdventureCosmetic("emote"))?.icon || "🥳", 420, 79);
+  }
 }
 
 function drawPaused() {
@@ -1304,7 +1735,7 @@ function drawLoading(time) {
   ctx.textAlign = "center";
   ctx.fillStyle = COLORS.white;
   ctx.font = "900 29px Arial";
-  ctx.fillText("CAPYCATCH 3.0", WIDTH / 2, 205);
+  ctx.fillText("CAPYCATCH 4.0", WIDTH / 2, 205);
   ctx.fillStyle = COLORS.muted;
   ctx.font = "700 14px Arial";
   ctx.fillText("Готовим мандарины...", WIDTH / 2, 237);
@@ -1324,6 +1755,7 @@ function drawFrame(time) {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
   if (shakeTime > 0 && gameState === "playing") ctx.translate(random(-shakeStrength, shakeStrength), random(-shakeStrength, shakeStrength));
   drawBackground(time);
+  drawBoss();
 
   if (gameState === "loading") {
     drawLoading(time);
@@ -1337,6 +1769,7 @@ function drawFrame(time) {
     if (gameState === "paused") drawPaused();
     if (gameState === "gameover") drawGameOver();
   }
+  drawAdventureFrame();
   ctx.restore();
 }
 
@@ -1374,10 +1807,22 @@ canvas.addEventListener("pointerdown", event => {
   }
   if (gameState === "gameover") {
     if (insideButton(point, 62, 354, 177, 51)) startGame();
-    else if (insideButton(point, 261, 354, 177, 51)) shareResult();
+    else if (insideButton(point, 261, 354, 177, 51)) {
+      if (adventureLevel) {
+        renderAdventure();
+        openDialog(ui.adventureDialog);
+      } else shareResult();
+    }
     return;
   }
   if (gameState === "playing") {
+    const now = performance.now();
+    if (now - lastPointerTap < 280 && adventureBonuses.dashEnabled) {
+      dashPlayer(point.x >= player.x + player.width / 2 ? 1 : -1);
+      lastPointerTap = 0;
+      return;
+    }
+    lastPointerTap = now;
     pointerActive = true;
     canvas.setPointerCapture?.(event.pointerId);
     movePlayerToPointer(event);
@@ -1425,6 +1870,7 @@ function bindMoveButton(button, direction) {
 
 bindMoveButton(ui.leftButton, "left");
 bindMoveButton(ui.rightButton, "right");
+ui.gadgetButton.addEventListener("click", useAdventureGadget);
 
 document.addEventListener("keydown", event => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
@@ -1433,6 +1879,8 @@ document.addEventListener("keydown", event => {
   if (key === "arrowleft" || key === "a" || key === "ф") input.left = true;
   if (key === "arrowright" || key === "d" || key === "в") input.right = true;
   if ((key === "enter" || key === " ") && (gameState === "start" || gameState === "gameover")) startGame();
+  if (key === " " && gameState === "playing") useAdventureGadget();
+  if (key === "shift" && gameState === "playing") dashPlayer();
   if ((key === "p" || key === "з" || key === "escape") && (gameState === "playing" || gameState === "paused")) togglePause();
   if (key === "m" || key === "ь") setSound(!soundEnabled);
   if (input.left || input.right) player.targetX = null;
@@ -1494,8 +1942,16 @@ document.querySelectorAll("[data-close-dialog]").forEach(button => {
 
 document.querySelectorAll("dialog").forEach(dialog => {
   dialog.addEventListener("click", event => {
-    if (event.target === dialog) closeDialog(dialog);
+    if (event.target === dialog) {
+      if (dialog === ui.storyDialog) finishStory();
+      else closeDialog(dialog);
+    }
   });
+});
+
+ui.storyDialog.addEventListener("cancel", event => {
+  event.preventDefault();
+  finishStory();
 });
 
 function renderModes() {
@@ -1504,6 +1960,157 @@ function renderModes() {
   ui.dailyDescription.textContent = progression.getDailyModifier().label;
   document.querySelectorAll("[data-mode]").forEach(button => button.classList.toggle("is-selected", button.dataset.mode === mode.id));
   document.querySelectorAll("[data-mode-score]").forEach(element => { element.textContent = progression.getHighScore(element.dataset.modeScore); });
+  updateGadgetUi();
+}
+
+function mechanicLabel(mechanic) {
+  return {
+    breeze: "Боковой ветер мягко меняет траекторию предметов",
+    decoys: "На поле появляются опасные золотые подделки",
+    storm: "Сильный ветер и дождь сносят предметы",
+    conveyor: "Конвейер постоянно сдвигает капибарку",
+    mixed: "Все механики приключения работают одновременно"
+  }[mechanic] || "Классические правила";
+}
+
+function cosmeticUnlockText(cosmetic) {
+  const rule = cosmetic.unlock;
+  if (rule.type === "start") return "Доступно сразу";
+  if (rule.type === "level") return `Пройти уровень ${rule.value}`;
+  if (rule.type === "stars") return `Собрать ${rule.value} звёзд`;
+  const event = adventure.events.find(item => item.id === rule.value);
+  return event ? `Событие: ${event.name}` : "Сезонное событие";
+}
+
+function renderAdventureEvent() {
+  const summary = adventure.getProgressSummary();
+  const { event, eventProgress } = summary;
+  const thresholds = [2, 5, 9];
+  const rewards = event.rewards.map(id => adventure.cosmetics.find(item => item.id === id)).filter(Boolean);
+  ui.adventureEvent.innerHTML = `<span><strong>${event.icon} ${event.name}</strong><br>Проходи новые уровни: ${eventProgress.points} очк.</span><span class="event-track">${rewards.map((reward, index) => `<span class="event-step ${eventProgress.claimed.includes(index) ? "is-earned" : ""}" title="${thresholds[index]} очк.: ${reward.name}">${reward.icon}</span>`).join("")}</span>`;
+}
+
+function renderAdventureMap() {
+  const state = adventure.getState();
+  const selectedLevel = adventure.getLevel();
+  if (!adventure.zones.some(zone => zone.id === selectedAdventureZone)) selectedAdventureZone = selectedLevel.zoneId;
+
+  ui.adventureZoneTabs.innerHTML = adventure.zones.map((zone, index) => {
+    const firstLevel = index * 8 + 1;
+    const unlocked = state.unlockedLevel >= firstLevel;
+    return `<button type="button" data-zone="${zone.id}" class="${zone.id === selectedAdventureZone ? "is-active" : ""}" ${unlocked ? "" : "disabled"}>${unlocked ? zone.icon : "🔒"} ${zone.name}</button>`;
+  }).join("");
+
+  const zone = adventure.getZone(selectedAdventureZone);
+  const zoneLevels = adventure.levels.filter(level => level.zoneId === zone.id);
+  ui.adventureLevelGrid.innerHTML = zoneLevels.map(level => {
+    const result = state.levels[level.id] || { stars: 0 };
+    const unlocked = level.number <= state.unlockedLevel;
+    const stars = `${"★".repeat(result.stars || 0)}${"☆".repeat(3 - (result.stars || 0))}`;
+    return `<button type="button" class="level-node ${level.boss ? "is-boss" : ""} ${level.number === selectedLevel.number ? "is-selected" : ""}" data-level="${level.number}" ${unlocked ? "" : "disabled"}><span class="node-icon">${unlocked ? level.icon : "🔒"}</span><span class="node-number">${level.boss ? "БОСС" : `УРОВЕНЬ ${level.number}`}</span><span class="node-stars">${unlocked ? stars : "???"}</span></button>`;
+  }).join("");
+
+  const level = selectedLevel.zoneId === zone.id ? selectedLevel : zoneLevels[0];
+  const result = state.levels[level.id] || { stars: 0, bestScore: 0 };
+  const unlocked = level.number <= state.unlockedLevel;
+  const gadget = adventure.getSelectedGadget();
+  ui.adventureLevelDetail.innerHTML = `<span class="dialog-kicker">${zone.icon} ${zone.name.toUpperCase()}</span><h3>${level.number}. ${level.title}</h3><p>${level.boss ? zone.boss.description : zone.subtitle}</p><ul><li><strong>Цель:</strong> ${level.objectiveText}</li><li><strong>Механика:</strong> ${mechanicLabel(level.mechanic)}</li><li><strong>Время:</strong> ${level.duration} сек.${level.lives ? `, ${level.lives} жизни` : ""}</li><li><strong>Гаджет:</strong> ${gadget.icon} ${gadget.name}</li></ul><div class="level-best"><span>${"★".repeat(result.stars || 0)}${"☆".repeat(3 - (result.stars || 0))}</span><span>Лучший счёт: ${result.bestScore || 0}</span></div><button class="primary-small-button" type="button" data-start-adventure="${level.number}" ${unlocked ? "" : "disabled"}>${level.boss ? "ВЫЗВАТЬ БОССА" : "НАЧАТЬ УРОВЕНЬ"}</button>`;
+}
+
+function renderSkillTree() {
+  const state = adventure.getState();
+  const points = adventure.getSkillPoints();
+  ui.skillPointsBadge.textContent = String(points);
+  const branches = [
+    { id: "agility", name: "🐾 Ловкость" },
+    { id: "defense", name: "🛡️ Защита" },
+    { id: "fever", name: "🌟 Fever" }
+  ];
+  ui.skillTree.innerHTML = branches.map(branch => `<section class="skill-branch"><h3>${branch.name}</h3>${adventure.skills.filter(skill => skill.branch === branch.id).map(skill => {
+    const owned = state.skills.includes(skill.id);
+    const dependencyMet = !skill.requires || state.skills.includes(skill.requires);
+    const locked = !owned && (!dependencyMet || points < skill.cost);
+    return `<button type="button" class="skill-card ${owned ? "is-owned" : locked ? "is-locked" : ""}" data-skill="${skill.id}" ${owned ? "disabled" : ""}><span>${skill.icon}<span class="skill-cost">${owned ? "✓" : `${skill.cost} ⭐`}</span></span><strong>${skill.name}</strong><small>${skill.description}</small></button>`;
+  }).join("")}</section>`).join("");
+}
+
+function renderGadgets() {
+  const state = adventure.getState();
+  const unlocked = new Set(adventure.getUnlockedGadgets().map(gadget => gadget.id));
+  ui.gadgetGrid.innerHTML = adventure.gadgets.map(gadget => {
+    const available = unlocked.has(gadget.id);
+    const selected = state.selectedGadget === gadget.id;
+    return `<button type="button" class="gadget-card ${selected ? "is-selected" : ""} ${available ? "" : "is-locked"}" data-gadget="${gadget.id}" ${available ? "" : "disabled"}><span>${available ? gadget.icon : "🔒"}</span><strong>${gadget.name}</strong><small>${available ? gadget.description : `Откроется на уровне ${gadget.unlockLevel}`}</small></button>`;
+  }).join("");
+}
+
+function renderAdventureCollection() {
+  const state = adventure.getState();
+  const groups = [
+    { id: "outfit", name: "Образы" },
+    { id: "trail", name: "Следы" },
+    { id: "frame", name: "Рамки результата" },
+    { id: "emote", name: "Эмоции" }
+  ];
+  ui.adventureCollection.innerHTML = groups.map(group => `<h3 class="collection-heading">${group.name}</h3>${adventure.cosmetics.filter(item => item.type === group.id).map(cosmetic => {
+    const owned = state.ownedCosmetics.includes(cosmetic.id);
+    const selected = state.selectedCosmetics[cosmetic.type] === cosmetic.id;
+    return `<button type="button" class="cosmetic-card ${selected ? "is-selected" : ""} ${owned ? "" : "is-locked"}" data-cosmetic="${cosmetic.id}" ${owned ? "" : "disabled"}><span>${owned ? cosmetic.icon : "🔒"}</span><strong>${cosmetic.name}</strong><small>${selected ? "Выбрано" : owned ? "Нажми, чтобы выбрать" : cosmeticUnlockText(cosmetic)}</small></button>`;
+  }).join("")}`).join("");
+}
+
+function renderAdventure() {
+  const summary = adventure.getProgressSummary();
+  ui.adventureStars.textContent = String(summary.stars);
+  ui.adventureCompleted.textContent = String(summary.completed);
+  renderAdventureEvent();
+  renderAdventureMap();
+  renderSkillTree();
+  renderGadgets();
+  renderAdventureCollection();
+}
+
+function renderStoryLine() {
+  if (!activeStory) return;
+  const line = activeStory.lines[storyIndex];
+  ui.storyIcon.textContent = line.icon;
+  ui.storySpeaker.textContent = line.speaker;
+  ui.storyText.textContent = line.text;
+  ui.storyProgress.textContent = `${storyIndex + 1} / ${activeStory.lines.length}`;
+  ui.storyNextButton.textContent = storyIndex === activeStory.lines.length - 1 ? "Завершить" : "Дальше";
+}
+
+function finishStory() {
+  if (!activeStory) return;
+  adventure.markStorySeen(activeStory.key);
+  closeDialog(ui.storyDialog);
+  activeStory = null;
+  const action = storyCompleteAction;
+  storyCompleteAction = null;
+  if (action) action();
+}
+
+function showStory(story, onComplete = null) {
+  if (!story?.lines?.length) {
+    if (onComplete) onComplete();
+    return;
+  }
+  activeStory = story;
+  storyIndex = 0;
+  storyCompleteAction = onComplete;
+  renderStoryLine();
+  openDialog(ui.storyDialog);
+}
+
+function requestAdventureStart(levelNumber) {
+  if (!adventure.selectLevel(levelNumber)) return;
+  progression.setMode("adventure");
+  mode = progression.getMode();
+  selectedAdventureZone = mode.level.zoneId;
+  closeDialog(ui.adventureDialog);
+  const story = adventure.getPendingStory(mode.level.id);
+  if (story) showStory(story, startGame);
+  else startGame();
 }
 
 function renderShop() {
@@ -1592,6 +2199,8 @@ function refreshAllUi() {
   renderAchievements();
   renderSettings();
   renderStreamerSettings();
+  renderAdventure();
+  updateGadgetUi();
 }
 
 document.querySelectorAll("[data-mode]").forEach(button => {
@@ -1619,6 +2228,11 @@ ui.shopGrid.addEventListener("click", event => {
 });
 
 ui.modeButton.addEventListener("click", () => { renderModes(); openDialog(ui.modeDialog); });
+ui.adventureButton.addEventListener("click", () => {
+  selectedAdventureZone = adventure.getLevel().zoneId;
+  renderAdventure();
+  openDialog(ui.adventureDialog);
+});
 ui.shopButton.addEventListener("click", () => { renderShop(); openDialog(ui.shopDialog); });
 ui.achievementsButton.addEventListener("click", () => { renderAchievements(); openDialog(ui.achievementsDialog); });
 ui.settingsButton.addEventListener("click", () => { renderSettings(); openDialog(ui.settingsDialog); });
@@ -1626,6 +2240,78 @@ ui.leaderboardButton.addEventListener("click", () => { renderLeaderboard(); open
 ui.streamerButton.addEventListener("click", () => { renderStreamerSettings(); openDialog(ui.streamerDialog); });
 ui.soundButton.addEventListener("click", () => setSound(!soundEnabled));
 ui.pauseButton.addEventListener("click", () => togglePause());
+
+document.querySelectorAll("[data-adventure-tab]").forEach(button => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("[data-adventure-tab]").forEach(item => item.classList.toggle("is-active", item === button));
+    document.querySelectorAll("[data-adventure-panel]").forEach(panel => { panel.hidden = panel.dataset.adventurePanel !== button.dataset.adventureTab; });
+  });
+});
+
+ui.adventureZoneTabs.addEventListener("click", event => {
+  const button = event.target.closest("[data-zone]");
+  if (!button || button.disabled) return;
+  selectedAdventureZone = button.dataset.zone;
+  const firstLevel = adventure.levels.find(level => level.zoneId === selectedAdventureZone);
+  if (firstLevel && adventure.getLevel().zoneId !== selectedAdventureZone) adventure.selectLevel(firstLevel.number);
+  renderAdventureMap();
+});
+
+ui.adventureLevelGrid.addEventListener("click", event => {
+  const button = event.target.closest("[data-level]");
+  if (!button || button.disabled) return;
+  adventure.selectLevel(Number(button.dataset.level));
+  renderAdventureMap();
+});
+
+ui.adventureLevelDetail.addEventListener("click", event => {
+  const button = event.target.closest("[data-start-adventure]");
+  if (button && !button.disabled) requestAdventureStart(Number(button.dataset.startAdventure));
+});
+
+ui.skillTree.addEventListener("click", event => {
+  const card = event.target.closest("[data-skill]");
+  if (!card || card.disabled) return;
+  const result = adventure.unlockSkill(card.dataset.skill);
+  showToast(result.ok ? `Навык «${result.skill.name}» открыт` : result.reason, result.ok ? result.skill.icon : "🔒");
+  renderAdventure();
+});
+
+ui.resetSkillsButton.addEventListener("click", () => {
+  if (!window.confirm("Сбросить все навыки и вернуть очки?")) return;
+  adventure.resetSkills();
+  renderAdventure();
+  showToast("Очки навыков возвращены", "↺");
+});
+
+ui.gadgetGrid.addEventListener("click", event => {
+  const card = event.target.closest("[data-gadget]");
+  if (!card || card.disabled) return;
+  if (adventure.selectGadget(card.dataset.gadget)) {
+    showToast(`Выбран гаджет «${adventure.getSelectedGadget().name}»`, adventure.getSelectedGadget().icon);
+    renderAdventure();
+  }
+});
+
+ui.adventureCollection.addEventListener("click", event => {
+  const card = event.target.closest("[data-cosmetic]");
+  if (!card || card.disabled) return;
+  if (adventure.selectCosmetic(card.dataset.cosmetic)) {
+    const cosmetic = adventure.cosmetics.find(item => item.id === card.dataset.cosmetic);
+    showToast(`Выбрано: ${cosmetic.name}`, cosmetic.icon);
+    renderAdventureCollection();
+  }
+});
+
+ui.storyNextButton.addEventListener("click", () => {
+  if (!activeStory) return;
+  if (storyIndex >= activeStory.lines.length - 1) finishStory();
+  else {
+    storyIndex += 1;
+    renderStoryLine();
+  }
+});
+ui.storySkipButton.addEventListener("click", finishStory);
 
 ui.effectsVolume.addEventListener("input", () => {
   const value = Number(ui.effectsVolume.value) / 100;
@@ -1644,6 +2330,7 @@ ui.reducedMotion.addEventListener("change", () => progression.setSetting("reduce
 ui.resetProgressButton.addEventListener("click", () => {
   if (!window.confirm("Сбросить рекорды, монеты, скины и достижения на этом устройстве?")) return;
   progression.reset();
+  adventure.reset();
   mode = progression.getMode();
   refreshAllUi();
   closeDialog(ui.settingsDialog);
@@ -1735,7 +2422,7 @@ async function shareResult() {
   shareCtx.textAlign = "center";
   shareCtx.fillStyle = COLORS.white;
   shareCtx.font = "900 70px Arial";
-  shareCtx.fillText("CAPYCATCH 3.0", 540, 100);
+  shareCtx.fillText("CAPYCATCH 4.0", 540, 100);
   shareCtx.fillStyle = COLORS.muted;
   shareCtx.font = "700 34px Arial";
   shareCtx.fillText(mode.name.toUpperCase(), 540, 650);
@@ -1750,11 +2437,11 @@ async function shareResult() {
   shareCtx.fillText("bekk3r1337.github.io/capycatch", 540, 1010);
 
   const blob = await new Promise(resolve => shareCanvas.toBlob(resolve, "image/png"));
-  const text = `Я набрал ${lastResult.score} очков в CapyCatch 3.0!`;
+  const text = `Я набрал ${lastResult.score} очков в CapyCatch 4.0!`;
   try {
     const file = new File([blob], "capycatch-result.png", { type: "image/png" });
     if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ title: "CapyCatch 3.0", text, files: [file] });
+      await navigator.share({ title: "CapyCatch 4.0", text, files: [file] });
       return;
     }
   } catch {

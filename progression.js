@@ -1,7 +1,8 @@
 "use strict";
 
 window.CapyProgression = (() => {
-  const STORAGE_KEY = "capycatch-progress-v3";
+  const STORAGE_KEY = "capycatch-progress-v4";
+  const LEGACY_PROGRESS_KEY = "capycatch-progress-v3";
   const LEGACY_SCORE_KEY = "capycatch-high-score-v2";
 
   const MODES = {
@@ -53,6 +54,18 @@ window.CapyProgression = (() => {
       rewardMultiplier: 1.35,
       seeded: true,
       description: "Одинаковый раунд для всех"
+    },
+    adventure: {
+      id: "adventure",
+      name: "Приключение",
+      shortName: "Карта",
+      duration: 60,
+      lives: null,
+      speedMultiplier: 1,
+      spawnMultiplier: 1,
+      bombBonus: 0,
+      rewardMultiplier: 1.2,
+      description: "Большое путешествие по пяти зонам"
     }
   };
 
@@ -109,6 +122,13 @@ window.CapyProgression = (() => {
     { id: "daily", icon: "📅", title: "Сегодня в деле", description: "Заверши испытание дня", reward: 12, test: round => round.mode === "daily" },
     { id: "collector", icon: "🛍️", title: "Коллекционер", description: "Получи три скина", reward: 30, test: (round, data) => data.ownedSkins.length >= 3 },
     { id: "veteran", icon: "🏆", title: "Ветеран ловли", description: "Сыграй 20 раундов", reward: 35, test: (round, data) => data.stats.games >= 20 }
+    ,{ id: "adventure_first", icon: "🗺️", title: "Первый шаг", description: "Пройди первый уровень приключения", reward: 12, test: round => round.mode === "adventure" && round.adventureCompleted }
+    ,{ id: "adventure_boss", icon: "⚔️", title: "Охотник на боссов", description: "Победи первого босса", reward: 25, test: round => round.mode === "adventure" && round.bossDefeated }
+    ,{ id: "adventure_stars", icon: "⭐", title: "Звёздный путь", description: "Собери 30 звёзд приключения", reward: 35, test: () => (window.CapyAdventure?.getTotalStars?.() || 0) >= 30 }
+    ,{ id: "adventure_half", icon: "🧭", title: "Половина пути", description: "Пройди 20 уровней приключения", reward: 45, test: () => (window.CapyAdventure?.getProgressSummary?.().completed || 0) >= 20 }
+    ,{ id: "adventure_final", icon: "🏰", title: "Спаситель урожая", description: "Победи Короля гнилых мандаринов", reward: 100, test: round => round.mode === "adventure" && round.adventureLevel === 40 && round.bossDefeated }
+    ,{ id: "skill_master", icon: "🌳", title: "Мастер навыков", description: "Открой 10 навыков приключения", reward: 40, test: () => (window.CapyAdventure?.getState?.().skills.length || 0) >= 10 }
+    ,{ id: "gadget_master", icon: "🧰", title: "Мастерская Пельмеша", description: "Открой все пять гаджетов", reward: 40, test: () => (window.CapyAdventure?.getUnlockedGadgets?.().length || 0) >= 5 }
   ];
 
   const DAILY_MODIFIERS = [
@@ -140,14 +160,14 @@ window.CapyProgression = (() => {
     }
 
     return {
-      version: 3,
+      version: 4,
       coins: 0,
       selectedMode: "classic",
       selectedSkin: "classic",
       ownedSkins: ["classic"],
       achievements: {},
       highScores: { classic: legacyScore, endless: 0, chaos: 0, daily: {} },
-      localBoards: { classic: [], endless: [], chaos: [], daily: [] },
+      localBoards: { classic: [], endless: [], chaos: [], daily: [], adventure: [] },
       viewerScores: {},
       playerName: "Bekk3r",
       twitch: { channel: "Bekk3rCapy", username: "" },
@@ -188,7 +208,11 @@ window.CapyProgression = (() => {
 
   function load() {
     try {
-      return mergeState(JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"));
+      const current = localStorage.getItem(STORAGE_KEY);
+      const legacy = localStorage.getItem(LEGACY_PROGRESS_KEY);
+      const loaded = mergeState(JSON.parse(current || legacy || "null"));
+      loaded.version = 4;
+      return loaded;
     } catch {
       return defaultState();
     }
@@ -213,6 +237,7 @@ window.CapyProgression = (() => {
   }
 
   function getMode(modeId = state.selectedMode) {
+    if (modeId === "adventure" && window.CapyAdventure) return window.CapyAdventure.getAdventureMode();
     const base = MODES[modeId] || MODES.classic;
     if (base.id !== "daily") return { ...base };
 
@@ -231,6 +256,10 @@ window.CapyProgression = (() => {
   }
 
   function getHighScore(modeId) {
+    if (modeId === "adventure" && window.CapyAdventure) {
+      const level = window.CapyAdventure.getLevel();
+      return Number(window.CapyAdventure.getState().levels[level.id]?.bestScore || 0);
+    }
     if (modeId === "daily") return Number(state.highScores.daily[todayKey()] || 0);
     return Number(state.highScores[modeId] || 0);
   }
@@ -319,7 +348,7 @@ window.CapyProgression = (() => {
     state.stats.feverActivations += Math.max(0, round.feverActivations || 0);
 
     const baseCoins = Math.max(2, Math.floor((round.score * 0.1 + round.caught * 0.12) * mode.rewardMultiplier));
-    const completionBonus = round.mode === "daily" ? 5 : round.mode === "chaos" ? 3 : 0;
+    const completionBonus = round.mode === "adventure" && round.adventureCompleted ? 6 : round.mode === "daily" ? 5 : round.mode === "chaos" ? 3 : 0;
     const coinsEarned = baseCoins + completionBonus;
     state.coins += coinsEarned;
 
