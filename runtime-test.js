@@ -84,6 +84,10 @@ const ids = [
   "music-volume", "music-volume-value", "reduced-motion", "reset-progress-button", "obs-mode-button",
   "copy-obs-link-button", "twitch-channel", "twitch-username", "twitch-token", "twitch-connect-button",
   "twitch-disconnect-button", "twitch-status", "viewer-leaderboard", "daily-description"
+  ,"gadget-button", "gadget-button-icon", "gadget-charges", "adventure-button", "adventure-dialog", "story-dialog",
+  "adventure-stars", "adventure-completed", "adventure-event", "adventure-zone-tabs", "adventure-level-grid",
+  "adventure-level-detail", "skill-points-badge", "skill-tree", "reset-skills-button", "gadget-grid",
+  "adventure-collection", "story-icon", "story-speaker", "story-text", "story-progress", "story-next-button", "story-skip-button"
 ];
 const elements = Object.fromEntries(ids.map(id => [id, makeElement(id)]));
 const canvas = elements.game;
@@ -227,7 +231,7 @@ sandbox.window = {
 sandbox.window.window = sandbox.window;
 
 vm.createContext(sandbox);
-for (const file of ["config.js", "progression.js", "streamer.js", "game.js"]) {
+for (const file of ["config.js", "adventure.js", "progression.js", "streamer.js", "game.js"]) {
   vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
 }
 
@@ -237,6 +241,14 @@ for (const file of ["config.js", "progression.js", "streamer.js", "game.js"]) {
 
   if (evaluate("gameState") !== "start") throw new Error("Игра не перешла на стартовый экран");
   if (evaluate("mode.id") !== "classic") throw new Error("Неверный режим по умолчанию");
+  if (evaluate("adventure.levels.length") !== 40 || evaluate("adventure.zones.length") !== 5) throw new Error("Карта приключения собрана не полностью");
+  if (evaluate("adventure.skills.length") !== 15 || evaluate("adventure.gadgets.length") !== 5) throw new Error("Навыки или гаджеты приключения собраны не полностью");
+  if (!evaluate("new Set(adventure.levels.map(level => level.id)).size === 40")) throw new Error("На карте есть повторяющиеся ID уровней");
+  if (!evaluate("adventure.zones.every(zone => adventure.levels.filter(level => level.zoneId === zone.id).length === 8)")) throw new Error("В одной из зон не восемь уровней");
+  if (!evaluate("adventure.zones.every(zone => { const levels=adventure.levels.filter(level => level.zoneId===zone.id); return levels.filter(level => level.boss).length===1 && levels[7].boss; })")) throw new Error("Боссы стоят не в конце зон");
+  if (!evaluate("adventure.levels.every(level => level.duration >= 40 && level.objective && level.starScores.length === 3)")) throw new Error("Конфигурация одного из уровней неполна");
+  if (evaluate("adventure.getActiveEvent(new Date('2026-10-10T12:00:00Z')).id") !== "autumn_harvest") throw new Error("Осеннее событие выбирается неверно");
+  if (evaluate("adventure.getActiveEvent(new Date('2026-12-10T12:00:00Z')).id") !== "winter_festival") throw new Error("Зимнее событие выбирается неверно");
 
   evaluate("startGame()");
   if (evaluate("gameState") !== "playing") throw new Error("Классический режим не стартовал");
@@ -280,13 +292,34 @@ for (const file of ["config.js", "progression.js", "streamer.js", "game.js"]) {
   evaluate("streamer.setObsMode(true)");
   if (!body.classList.contains("obs-mode")) throw new Error("OBS-режим не включился");
 
+  evaluate("streamer.setObsMode(false); adventure.selectLevel(1); progression.setMode('adventure'); mode=progression.getMode(); startGame()");
+  if (evaluate("mode.level.number") !== 1 || evaluate("gadgetCharges") !== 1) throw new Error("Первый уровень приключения не стартовал");
+  if (!evaluate("useAdventureGadget()") || evaluate("powerups.magnet") <= 0) throw new Error("Гаджет приключения не сработал");
+  evaluate("score=120; metrics.caught=30; finishRound('time')");
+  if (!evaluate("adventure.getState().levels['garden-1'].completed")) throw new Error("Прогресс уровня приключения не сохранился");
+  if (evaluate("adventure.getState().unlockedLevel") < 2) throw new Error("Следующий уровень приключения не открылся");
+
+  evaluate("for (let n=2;n<=7;n+=1){ adventure.selectLevel(n); const level=adventure.getLevel(); adventure.completeLevel(level.id,{score:999,caught:99,goldenCaught:20,maxCombo:4,bombsCaught:0,missed:0,feverActivations:3,endReason:'time'}); }");
+  if (evaluate("adventure.getSkillPoints()") < 1) throw new Error("Звёзды не выдали очки навыков");
+  if (!evaluate("adventure.unlockSkill('quick_paws').ok")) throw new Error("Навык приключения не открылся");
+  evaluate("adventure.selectLevel(8); progression.setMode('adventure'); mode=progression.getMode(); startGame()");
+  if (!evaluate("bossState") || evaluate("bossState.maxHp") !== 4) throw new Error("Босс сада не появился");
+  evaluate("while (bossState.hp > 0) handleCatch({type:'strike',x:250,y:250}); finishRound('boss')");
+  if (!evaluate("adventure.getState().levels['garden-8'].completed")) throw new Error("Победа над боссом не сохранилась");
+  evaluate("for (const level of adventure.levels) adventure.completeLevel(level.id,{score:999,caught:999,goldenCaught:99,maxCombo:4,bombsCaught:0,missed:0,feverActivations:9,endReason:level.boss?'boss':'time',remainingLives:4,bossDefeated:level.boss})");
+  if (evaluate("adventure.getProgressSummary().completed") !== 40 || evaluate("adventure.getTotalStars()") !== 120) throw new Error("Не все 40 уровней проходят проверку целей и звёзд");
+  if (evaluate("adventure.getUnlockedGadgets().length") !== 5) throw new Error("После прохождения карты открылись не все гаджеты");
+
   console.log(JSON.stringify({
     ok: true,
     games: evaluate("progression.getState().stats.games"),
     achievements: evaluate("Object.keys(progression.getState().achievements).length"),
     skin: evaluate("progression.getSkin().id"),
-    daily: evaluate("mode.dailyModifier.label"),
-    optimizedAssets: ["capy.webp", "mandarin.webp", "gold.webp", "bomb.webp"].every(file => fs.existsSync(file))
+    daily: evaluate("progression.getDailyModifier().label"),
+    optimizedAssets: ["capy.webp", "mandarin.webp", "gold.webp", "bomb.webp"].every(file => fs.existsSync(file)),
+    adventureLevels: evaluate("adventure.levels.length"),
+    adventureStars: evaluate("adventure.getTotalStars()"),
+    firstBoss: evaluate("adventure.getState().levels['garden-8'].completed")
   }));
 })().catch(error => {
   console.error(error);

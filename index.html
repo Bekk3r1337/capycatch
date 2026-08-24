@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#170b2f">
-  <meta name="description" content="CapyCatch 3.0 - аркадная игра про капибарку, мандарины и зрителей Twitch.">
-  <title>CapyCatch 3.0 by Bekk3r</title>
+  <meta name="description" content="CapyCatch 4.0 - большое приключение капибарки по пяти зонам с боссами, прокачкой и гаджетами.">
+  <title>CapyCatch 4.0 by Bekk3r</title>
   <link rel="preload" href="capy.webp" as="image" type="image/webp">
   <link rel="preload" href="mandarin.webp" as="image" type="image/webp">
   <link rel="preload" href="gold.webp" as="image" type="image/webp">
@@ -17,7 +17,7 @@
     <header class="game-header">
       <div class="brand">
         <p class="eyebrow">мини-игра от Bekk3r</p>
-        <h1 id="page-title">CapyCatch <span>3.0</span></h1>
+        <h1 id="page-title">CapyCatch <span>4.0</span></h1>
       </div>
 
       <div class="header-actions">
@@ -37,6 +37,7 @@
     </section>
 
     <nav class="game-actions" aria-label="Разделы игры">
+      <button id="adventure-button" class="menu-button adventure-action" type="button"><span>🗺️</span><span>Приключение</span></button>
       <button id="mode-button" class="menu-button" type="button"><span>🎮</span><span id="mode-button-label">Классика</span></button>
       <button id="shop-button" class="menu-button" type="button"><span>🛍</span><span>Скины</span></button>
       <button id="achievements-button" class="menu-button" type="button"><span>🏆</span><span>Награды</span></button>
@@ -46,6 +47,7 @@
 
     <div class="mobile-controls" aria-label="Управление капибарой">
       <button id="left-button" class="move-button" type="button" aria-label="Двигаться влево">◀</button>
+      <button id="gadget-button" class="gadget-button" type="button" aria-label="Использовать гаджет" hidden><span id="gadget-button-icon">🧲</span><small id="gadget-charges">1</small></button>
       <button id="right-button" class="move-button" type="button" aria-label="Двигаться вправо">▶</button>
     </div>
 
@@ -75,6 +77,52 @@
       <button class="mode-card" type="button" data-mode="daily">
         <span class="mode-icon">📅</span><strong>Испытание дня</strong><small id="daily-description">Одинаковый раунд для всех</small><em>Сегодня: <b data-mode-score="daily">0</b></em>
       </button>
+    </div>
+  </dialog>
+
+  <dialog id="adventure-dialog" class="game-dialog adventure-dialog">
+    <div class="dialog-header">
+      <div><p class="dialog-kicker">CAPYCATCH 4.0</p><h2>Большое приключение</h2></div>
+      <div class="adventure-summary"><span>⭐ <b id="adventure-stars">0</b>/120</span><span>🗺️ <b id="adventure-completed">0</b>/40</span></div>
+      <button class="close-button" type="button" data-close-dialog aria-label="Закрыть">✕</button>
+    </div>
+    <div id="adventure-event" class="adventure-event"></div>
+    <div class="adventure-tabs" role="tablist" aria-label="Разделы приключения">
+      <button class="is-active" type="button" data-adventure-tab="map">Карта</button>
+      <button type="button" data-adventure-tab="skills">Навыки <span id="skill-points-badge">0</span></button>
+      <button type="button" data-adventure-tab="gadgets">Гаджеты</button>
+      <button type="button" data-adventure-tab="collection">Коллекция</button>
+    </div>
+    <section class="adventure-panel" data-adventure-panel="map">
+      <div id="adventure-zone-tabs" class="zone-tabs"></div>
+      <div class="adventure-map-layout">
+        <div id="adventure-level-grid" class="level-grid"></div>
+        <article id="adventure-level-detail" class="level-detail"></article>
+      </div>
+    </section>
+    <section class="adventure-panel" data-adventure-panel="skills" hidden>
+      <div class="section-intro"><div><h3>Дерево навыков</h3><p>Навыки действуют только в приключении. Одно очко выдаётся за каждые три звезды.</p></div><button id="reset-skills-button" class="secondary-small-button" type="button">Сбросить бесплатно</button></div>
+      <div id="skill-tree" class="skill-tree"></div>
+    </section>
+    <section class="adventure-panel" data-adventure-panel="gadgets" hidden>
+      <div class="section-intro"><div><h3>Мастерская Пельмеша</h3><p>Перед уровнем выбери один гаджет. Используй его пробелом или центральной кнопкой.</p></div></div>
+      <div id="gadget-grid" class="gadget-grid"></div>
+    </section>
+    <section class="adventure-panel" data-adventure-panel="collection" hidden>
+      <div class="section-intro"><div><h3>Коллекция путешественника</h3><p>Образы, следы, рамки и эмоции открываются за уровни, звёзды и локальные события.</p></div></div>
+      <div id="adventure-collection" class="adventure-collection"></div>
+    </section>
+  </dialog>
+
+  <dialog id="story-dialog" class="game-dialog story-dialog">
+    <div class="story-scene">
+      <span id="story-icon" class="story-icon">🦫</span>
+      <div class="story-copy"><p id="story-speaker" class="dialog-kicker">BEKK3R</p><p id="story-text">Впереди большое приключение.</p></div>
+    </div>
+    <div class="story-actions">
+      <button id="story-skip-button" class="secondary-small-button" type="button">Пропустить</button>
+      <span id="story-progress">1 / 3</span>
+      <button id="story-next-button" class="primary-small-button" type="button">Дальше</button>
     </div>
   </dialog>
 
@@ -163,6 +211,7 @@
   </dialog>
 
   <script src="config.js" defer></script>
+  <script src="adventure.js" defer></script>
   <script src="progression.js" defer></script>
   <script src="streamer.js" defer></script>
   <script src="game.js" defer></script>
