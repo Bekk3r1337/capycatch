@@ -4,24 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#170b2f">
-  <meta name="description" content="CapyCatch - поймай как можно больше мандаринов за 60 секунд!">
-  <title>CapyCatch 2.0 by Bekk3r</title>
-  <link rel="preload" href="capy.png" as="image">
-  <link rel="preload" href="mandarin.png" as="image">
-  <link rel="preload" href="gold.png" as="image">
-  <link rel="preload" href="bomb.png" as="image">
+  <meta name="description" content="CapyCatch 3.0 - аркадная игра про капибарку, мандарины и зрителей Twitch.">
+  <title>CapyCatch 3.0 by Bekk3r</title>
+  <link rel="preload" href="capy.webp" as="image" type="image/webp">
+  <link rel="preload" href="mandarin.webp" as="image" type="image/webp">
+  <link rel="preload" href="gold.webp" as="image" type="image/webp">
+  <link rel="preload" href="bomb.webp" as="image" type="image/webp">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="game-shell" aria-labelledby="page-title">
     <header class="game-header">
-      <div>
+      <div class="brand">
         <p class="eyebrow">мини-игра от Bekk3r</p>
-        <h1 id="page-title">CapyCatch <span>2.0</span></h1>
+        <h1 id="page-title">CapyCatch <span>3.0</span></h1>
       </div>
 
-      <div class="toolbar" aria-label="Настройки игры">
+      <div class="header-actions">
+        <div class="wallet" title="Мандариновые монеты"><span>🍊</span><strong id="coins-display">0</strong></div>
         <button id="sound-button" class="icon-button" type="button" aria-label="Выключить звук" title="Звук (M)">🔊</button>
+        <button id="settings-button" class="icon-button" type="button" aria-label="Настройки" title="Настройки">⚙</button>
         <button id="pause-button" class="text-button" type="button" aria-label="Поставить игру на паузу" disabled>Пауза</button>
       </div>
     </header>
@@ -30,7 +32,17 @@
       <canvas id="game" width="500" height="450" tabindex="0" aria-label="Игра CapyCatch. Управляйте капибарой и ловите мандарины.">
         Ваш браузер не поддерживает Canvas.
       </canvas>
+      <div id="toast-layer" class="toast-layer" aria-live="polite"></div>
+      <div id="chat-badge" class="chat-badge" hidden><span class="status-dot"></span><span id="chat-badge-text">Twitch</span></div>
     </section>
+
+    <nav class="game-actions" aria-label="Разделы игры">
+      <button id="mode-button" class="menu-button" type="button"><span>🎮</span><span id="mode-button-label">Классика</span></button>
+      <button id="shop-button" class="menu-button" type="button"><span>🛍</span><span>Скины</span></button>
+      <button id="achievements-button" class="menu-button" type="button"><span>🏆</span><span>Награды</span></button>
+      <button id="leaderboard-button" class="menu-button" type="button"><span>📊</span><span>Рейтинг</span></button>
+      <button id="streamer-button" class="menu-button accent" type="button"><span>📺</span><span>Стример</span></button>
+    </nav>
 
     <div class="mobile-controls" aria-label="Управление капибарой">
       <button id="left-button" class="move-button" type="button" aria-label="Двигаться влево">◀</button>
@@ -45,6 +57,114 @@
     <p id="live-status" class="sr-only" role="status" aria-live="polite">Загрузка игры</p>
   </main>
 
+  <dialog id="mode-dialog" class="game-dialog">
+    <div class="dialog-header">
+      <div><p class="dialog-kicker">ВЫБОР ИГРЫ</p><h2>Режимы</h2></div>
+      <button class="close-button" type="button" data-close-dialog aria-label="Закрыть">✕</button>
+    </div>
+    <div class="mode-grid">
+      <button class="mode-card" type="button" data-mode="classic">
+        <span class="mode-icon">🍊</span><strong>Классика</strong><small>60 секунд и привычные правила</small><em>Рекорд: <b data-mode-score="classic">0</b></em>
+      </button>
+      <button class="mode-card" type="button" data-mode="endless">
+        <span class="mode-icon">❤️</span><strong>Бесконечный</strong><small>Три жизни и растущая сложность</small><em>Рекорд: <b data-mode-score="endless">0</b></em>
+      </button>
+      <button class="mode-card" type="button" data-mode="chaos">
+        <span class="mode-icon">⚡</span><strong>Хаос</strong><small>30 быстрых и безумных секунд</small><em>Рекорд: <b data-mode-score="chaos">0</b></em>
+      </button>
+      <button class="mode-card" type="button" data-mode="daily">
+        <span class="mode-icon">📅</span><strong>Испытание дня</strong><small id="daily-description">Одинаковый раунд для всех</small><em>Сегодня: <b data-mode-score="daily">0</b></em>
+      </button>
+    </div>
+  </dialog>
+
+  <dialog id="shop-dialog" class="game-dialog wide-dialog">
+    <div class="dialog-header">
+      <div><p class="dialog-kicker">КОЛЛЕКЦИЯ</p><h2>Скины капибарки</h2></div>
+      <div class="dialog-wallet">🍊 <strong id="shop-coins">0</strong></div>
+      <button class="close-button" type="button" data-close-dialog aria-label="Закрыть">✕</button>
+    </div>
+    <p class="dialog-copy">Монеты выдаются после каждого завершённого раунда. Скины меняют ауру, след и украшение корзинки.</p>
+    <div id="shop-grid" class="shop-grid"></div>
+  </dialog>
+
+  <dialog id="achievements-dialog" class="game-dialog wide-dialog">
+    <div class="dialog-header">
+      <div><p class="dialog-kicker">ПРОГРЕСС</p><h2>Достижения</h2></div>
+      <p id="achievement-summary" class="summary-pill">0 / 0</p>
+      <button class="close-button" type="button" data-close-dialog aria-label="Закрыть">✕</button>
+    </div>
+    <div id="achievements-grid" class="achievements-grid"></div>
+  </dialog>
+
+  <dialog id="settings-dialog" class="game-dialog compact-dialog">
+    <div class="dialog-header">
+      <div><p class="dialog-kicker">ПАРАМЕТРЫ</p><h2>Настройки</h2></div>
+      <button class="close-button" type="button" data-close-dialog aria-label="Закрыть">✕</button>
+    </div>
+    <label class="range-setting"><span><b>Эффекты</b><output id="effects-volume-value">70%</output></span><input id="effects-volume" type="range" min="0" max="100" step="5" value="70"></label>
+    <label class="range-setting"><span><b>Музыка</b><output id="music-volume-value">25%</output></span><input id="music-volume" type="range" min="0" max="100" step="5" value="25"></label>
+    <label class="toggle-setting"><span><b>Меньше движения</b><small>Отключает тряску и часть частиц</small></span><input id="reduced-motion" type="checkbox"></label>
+    <button id="reset-progress-button" class="danger-button" type="button">Сбросить локальный прогресс</button>
+  </dialog>
+
+  <dialog id="leaderboard-dialog" class="game-dialog wide-dialog">
+    <div class="dialog-header">
+      <div><p class="dialog-kicker">РЕКОРДЫ</p><h2>Таблица лидеров</h2></div>
+      <button class="close-button" type="button" data-close-dialog aria-label="Закрыть">✕</button>
+    </div>
+    <div class="leaderboard-controls">
+      <label>Имя игрока<input id="player-name" maxlength="18" placeholder="Bekk3r" autocomplete="nickname"></label>
+      <label>Режим<select id="leaderboard-mode"><option value="classic">Классика</option><option value="endless">Бесконечный</option><option value="chaos">Хаос</option><option value="daily">Испытание дня</option></select></label>
+      <div class="segmented"><button id="local-board-button" class="is-active" type="button">Локально</button><button id="online-board-button" type="button">Онлайн</button></div>
+    </div>
+    <p id="leaderboard-note" class="dialog-copy">Здесь сохраняются десять лучших результатов этого браузера.</p>
+    <ol id="leaderboard-list" class="leaderboard-list"></ol>
+  </dialog>
+
+  <dialog id="streamer-dialog" class="game-dialog wide-dialog">
+    <div class="dialog-header">
+      <div><p class="dialog-kicker">ДЛЯ ТРАНСЛЯЦИИ</p><h2>Стримерский режим</h2></div>
+      <button class="close-button" type="button" data-close-dialog aria-label="Закрыть">✕</button>
+    </div>
+
+    <div class="streamer-layout">
+      <section class="streamer-section">
+        <h3>OBS</h3>
+        <p>Прозрачный фон, компактный интерфейс и управление без лишних блоков.</p>
+        <button id="obs-mode-button" class="primary-small-button" type="button">Включить OBS-режим</button>
+        <button id="copy-obs-link-button" class="secondary-small-button" type="button">Скопировать OBS-ссылку</button>
+      </section>
+
+      <section class="streamer-section">
+        <h3>Twitch-чат</h3>
+        <p>Токен используется только в текущей вкладке и не сохраняется. Нужен токен с правом <code>chat:read</code>.</p>
+        <div class="form-grid">
+          <label>Канал<input id="twitch-channel" value="Bekk3rCapy" autocomplete="off"></label>
+          <label>Логин Twitch<input id="twitch-username" autocomplete="username"></label>
+          <label class="full-row">OAuth-токен<input id="twitch-token" type="password" placeholder="oauth:..." autocomplete="off"></label>
+        </div>
+        <div class="inline-actions"><button id="twitch-connect-button" class="primary-small-button" type="button">Подключить чат</button><button id="twitch-disconnect-button" class="secondary-small-button" type="button" disabled>Отключить</button></div>
+        <p id="twitch-status" class="connection-status"><span></span>Чат не подключён</p>
+      </section>
+
+      <section class="streamer-section full-section">
+        <h3>Команды зрителей</h3>
+        <div class="command-list"><code>!start</code><code>!left</code><code>!right</code><code>!drop</code><code>!gold</code><code>!bomb</code><code>!shield</code></div>
+        <p>Для проверки без Twitch используй кнопки ниже.</p>
+        <div class="test-commands"><button type="button" data-test-command="start">▶</button><button type="button" data-test-command="left">←</button><button type="button" data-test-command="right">→</button><button type="button" data-test-command="drop">🍊</button><button type="button" data-test-command="gold">✨</button><button type="button" data-test-command="bomb">💣</button><button type="button" data-test-command="shield">🛡</button></div>
+      </section>
+
+      <section class="streamer-section full-section">
+        <h3>Активные зрители</h3>
+        <ol id="viewer-leaderboard" class="viewer-leaderboard"><li>Пока никто не участвовал</li></ol>
+      </section>
+    </div>
+  </dialog>
+
+  <script src="config.js" defer></script>
+  <script src="progression.js" defer></script>
+  <script src="streamer.js" defer></script>
   <script src="game.js" defer></script>
 </body>
 </html>

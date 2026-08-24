@@ -1,0 +1,9 @@
+{
+  "name": "capycatch",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node --check config.js && node --check progression.js && node --check streamer.js && node --check game.js",
+    "test": "npm run check && node runtime-test.js"
+  }
+}
