@@ -2135,6 +2135,7 @@ function renderAchievements() {
 }
 
 function renderViewerBoard() {
+  if (!ui.viewerLeaderboard) return;
   const board = progression.getViewerBoard();
   ui.viewerLeaderboard.innerHTML = board.length
     ? board.map(entry => `<li><strong>${entry.name}</strong><span class="leaderboard-score">${entry.score}</span></li>`).join("")
@@ -2144,7 +2145,7 @@ function renderViewerBoard() {
 async function renderLeaderboard() {
   const selectedMode = ui.leaderboardMode.value;
   ui.localBoardButton.classList.toggle("is-active", leaderboardView === "local");
-  ui.onlineBoardButton.classList.toggle("is-active", leaderboardView === "online");
+  ui.onlineBoardButton?.classList.toggle("is-active", leaderboardView === "online");
   ui.leaderboardList.innerHTML = "<li><strong>Загрузка...</strong><span></span></li>";
 
   if (leaderboardView === "online") {
@@ -2183,6 +2184,7 @@ function renderSettings() {
 }
 
 function renderStreamerSettings() {
+  if (!ui.twitchChannel || !ui.twitchUsername || !ui.obsModeButton) return;
   const state = progression.getState();
   ui.twitchChannel.value = state.twitch.channel || "Bekk3rCapy";
   ui.twitchUsername.value = state.twitch.username || "";
@@ -2237,7 +2239,7 @@ ui.shopButton.addEventListener("click", () => { renderShop(); openDialog(ui.shop
 ui.achievementsButton.addEventListener("click", () => { renderAchievements(); openDialog(ui.achievementsDialog); });
 ui.settingsButton.addEventListener("click", () => { renderSettings(); openDialog(ui.settingsDialog); });
 ui.leaderboardButton.addEventListener("click", () => { renderLeaderboard(); openDialog(ui.leaderboardDialog); });
-ui.streamerButton.addEventListener("click", () => { renderStreamerSettings(); openDialog(ui.streamerDialog); });
+ui.streamerButton?.addEventListener("click", () => { renderStreamerSettings(); openDialog(ui.streamerDialog); });
 ui.soundButton.addEventListener("click", () => setSound(!soundEnabled));
 ui.pauseButton.addEventListener("click", () => togglePause());
 
@@ -2340,15 +2342,15 @@ ui.resetProgressButton.addEventListener("click", () => {
 ui.playerName.addEventListener("change", () => { ui.playerName.value = progression.setPlayerName(ui.playerName.value); });
 ui.leaderboardMode.addEventListener("change", renderLeaderboard);
 ui.localBoardButton.addEventListener("click", () => { leaderboardView = "local"; renderLeaderboard(); });
-ui.onlineBoardButton.addEventListener("click", () => { leaderboardView = "online"; renderLeaderboard(); });
+ui.onlineBoardButton?.addEventListener("click", () => { leaderboardView = "online"; renderLeaderboard(); });
 
-ui.obsModeButton.addEventListener("click", () => {
+ui.obsModeButton?.addEventListener("click", () => {
   const enabled = streamer.setObsMode(!streamer.isObsMode());
   ui.obsModeButton.textContent = enabled ? "Выключить OBS-режим" : "Включить OBS-режим";
   if (enabled) closeDialog(ui.streamerDialog);
 });
 
-ui.copyObsLinkButton.addEventListener("click", async () => {
+ui.copyObsLinkButton?.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(streamer.getObsLink());
     showToast("OBS-ссылка скопирована", "📋");
@@ -2357,23 +2359,24 @@ ui.copyObsLinkButton.addEventListener("click", async () => {
   }
 });
 
-ui.twitchConnectButton.addEventListener("click", () => {
+ui.twitchConnectButton?.addEventListener("click", () => {
   streamer.connect({ channel: ui.twitchChannel.value, username: ui.twitchUsername.value, token: ui.twitchToken.value });
   ui.twitchToken.value = "";
 });
 
-ui.twitchDisconnectButton.addEventListener("click", () => streamer.disconnect());
+ui.twitchDisconnectButton?.addEventListener("click", () => streamer.disconnect());
 document.querySelectorAll("[data-test-command]").forEach(button => button.addEventListener("click", () => streamer.simulate(button.dataset.testCommand)));
 
 window.addEventListener("capycatch:stream-status", event => {
+  if (!ui.twitchStatus || !ui.twitchConnectButton || !ui.twitchDisconnectButton) return;
   const { status, message, channel } = event.detail;
   ui.twitchStatus.classList.toggle("is-connected", status === "connected");
   ui.twitchStatus.classList.toggle("is-error", status === "error");
   ui.twitchStatus.lastChild.textContent = message;
   ui.twitchConnectButton.disabled = status === "connecting" || status === "connected";
   ui.twitchDisconnectButton.disabled = status !== "connecting" && status !== "connected";
-  ui.chatBadge.hidden = status !== "connected";
-  ui.chatBadgeText.textContent = channel ? `#${channel}` : "Twitch";
+  if (ui.chatBadge) ui.chatBadge.hidden = status !== "connected";
+  if (ui.chatBadgeText) ui.chatBadgeText.textContent = channel ? `#${channel}` : "Twitch";
 });
 
 window.addEventListener("capycatch:viewer-score", renderViewerBoard);
@@ -2459,6 +2462,10 @@ async function shareResult() {
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && gameState === "playing") togglePause(true);
+});
+
+window.addEventListener("capycatch:twitch-visibility", event => {
+  if (event.detail?.visible === false && gameState === "playing") togglePause(true);
 });
 
 window.addEventListener("blur", () => {
