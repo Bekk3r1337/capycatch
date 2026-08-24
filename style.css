@@ -1415,3 +1415,215 @@ body.obs-mode canvas {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Twitch Panel package: fixed 318 x 496 viewport with full-screen dialogs. */
+html.twitch-panel,
+body.twitch-panel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.twitch-panel {
+  display: block;
+  padding: 0;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(139, 92, 246, 0.27), transparent 36%),
+    linear-gradient(155deg, #0d0719, #1c0c35 58%, #10071f);
+}
+
+body.twitch-panel::before {
+  opacity: 0.11;
+}
+
+body.twitch-panel .game-shell {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+body.twitch-panel .game-header {
+  min-height: 31px;
+  gap: 7px;
+  margin: 0 1px 5px;
+}
+
+body.twitch-panel .eyebrow,
+body.twitch-panel .wallet,
+body.twitch-panel .controls-hint {
+  display: none;
+}
+
+body.twitch-panel h1 {
+  font-size: 20px;
+}
+
+body.twitch-panel .header-actions {
+  gap: 4px;
+}
+
+body.twitch-panel .icon-button,
+body.twitch-panel .text-button {
+  height: 31px;
+  border-radius: 9px;
+}
+
+body.twitch-panel .icon-button {
+  width: 31px;
+  font-size: 14px;
+}
+
+body.twitch-panel .text-button {
+  min-width: 49px;
+  padding-inline: 6px;
+  font-size: 9px;
+}
+
+body.twitch-panel .game-frame {
+  border-width: 1px;
+  border-radius: 12px;
+}
+
+body.twitch-panel .game-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 5px;
+}
+
+body.twitch-panel .menu-button {
+  min-height: 38px;
+  padding: 4px 2px;
+  border-radius: 9px;
+  font-size: 7px;
+}
+
+body.twitch-panel .menu-button span:first-child {
+  margin-bottom: 1px;
+  font-size: 14px;
+}
+
+body.twitch-panel .mobile-controls {
+  gap: 6px;
+  margin-top: 5px;
+}
+
+body.twitch-panel .mobile-controls.has-gadget {
+  grid-template-columns: 1fr 46px 1fr;
+}
+
+body.twitch-panel .move-button,
+body.twitch-panel .gadget-button {
+  min-height: 41px;
+  border-radius: 10px;
+  font-size: 18px;
+}
+
+body.twitch-panel .toast-layer {
+  top: 48px;
+  width: 90%;
+}
+
+body.twitch-panel .toast {
+  padding: 7px 9px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+body.twitch-panel .game-dialog {
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  padding: 10px;
+  border: 0;
+  border-radius: 0;
+  background: #1c0d34;
+}
+
+body.twitch-panel .dialog-header {
+  position: sticky;
+  top: -10px;
+  z-index: 5;
+  min-height: 45px;
+  margin: -10px -10px 10px;
+  padding: 10px 48px 8px 10px;
+  background: rgba(28, 13, 52, 0.97);
+  backdrop-filter: blur(12px);
+}
+
+body.twitch-panel .dialog-header h2 {
+  font-size: 19px;
+}
+
+body.twitch-panel .close-button {
+  top: 9px;
+  right: 9px;
+  width: 34px;
+  height: 34px;
+}
+
+body.twitch-panel .mode-card,
+body.twitch-panel .skin-card,
+body.twitch-panel .achievement-card,
+body.twitch-panel .skill-branch,
+body.twitch-panel .skill-card,
+body.twitch-panel .gadget-card,
+body.twitch-panel .cosmetic-card {
+  border-radius: 12px;
+}
+
+body.twitch-panel .mode-card {
+  padding: 11px;
+}
+
+body.twitch-panel .mode-card strong {
+  margin: 4px 0 3px;
+  font-size: 14px;
+}
+
+body.twitch-panel .mode-card small {
+  min-height: 0;
+}
+
+body.twitch-panel .level-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+body.twitch-panel .level-node {
+  min-height: 72px;
+  padding: 7px 4px;
+  border-radius: 12px;
+}
+
+body.twitch-panel .adventure-dialog {
+  width: 100vw;
+}
+
+body.twitch-panel .adventure-tabs button,
+body.twitch-panel .zone-tabs button {
+  min-height: 34px;
+  padding-inline: 9px;
+}
+
+body.twitch-panel .story-scene {
+  grid-template-columns: 58px 1fr;
+  min-height: 125px;
+  gap: 10px;
+  padding: 10px;
+}
+
+body.twitch-panel .story-icon {
+  width: 58px;
+  height: 58px;
+  font-size: 32px;
+}

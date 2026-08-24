@@ -3,7 +3,8 @@
   "version": "4.0.0",
   "private": true,
   "scripts": {
-    "check": "node --check config.js && node --check adventure.js && node --check progression.js && node --check streamer.js && node --check game.js",
-    "test": "npm run check && node runtime-test.js"
+    "check": "node --check config.js && node --check adventure.js && node --check progression.js && node --check streamer.js && node --check streamer-twitch.js && node --check twitch.js && node --check game.js && node --check build-twitch.js && node --check twitch-package-test.js",
+    "build:twitch": "node build-twitch.js",
+    "test": "npm run check && node runtime-test.js && npm run build:twitch && node twitch-package-test.js"
   }
 }
